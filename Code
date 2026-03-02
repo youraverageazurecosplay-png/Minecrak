@@ -1,3 +1,318 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="$0"
+
+DEFAULT_CLONE_DIR="$HOME"
+DEFAULT_FABRIC_PROJECT_NAME="Minecrak Fabric"
+DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
+
+DEFAULT_FABRIC_VERSION="1.21.11"
+FABRIC_EXAMPLE_REPO="https://github.com/FabricMC/fabric-example-mod"
+
+DEFAULT_NEO_VERSION="1.21.1"
+
+ENTERTAINMENT_URL="https://www.youtube.com"
+
+GREEN="\033[0;32m"
+NC="\033[0m"
+
+CREATED_PROJECT_DIR=""
+
+cleanup() {
+  if [ -n "${CREATED_PROJECT_DIR:-}" ] && [ -d "$CREATED_PROJECT_DIR" ]; then
+    echo
+    echo -e "${GREEN}[CLEANUP] Removing incomplete project directory:${NC}"
+    echo "  $CREATED_PROJECT_DIR"
+    rm -rf "$CREATED_PROJECT_DIR"
+  fi
+
+  if [ -n "${SCRIPT_PATH:-}" ] && [ -f "$SCRIPT_PATH" ]; then
+    echo -e "${GREEN}[CLEANUP] Removing installer script file: $SCRIPT_PATH${NC}"
+    rm -f "$SCRIPT_PATH" || true
+  fi
+}
+trap cleanup EXIT
+
+prompt_loader_choice() {
+  echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
+  echo
+  echo "Which loader do you want?"
+  select opt in "Fabric" "NeoForge"; do
+    case "$opt" in
+      "Fabric") LOADER="Fabric"; break ;;
+      "NeoForge") LOADER="NeoForge"; break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+}
+
+prompt_entertainment_choice() {
+  echo
+  echo "Open something entertaining in your browser while it downloads?"
+  echo "Current URL: $ENTERTAINMENT_URL"
+  select opt in "Yes" "No"; do
+    case "$opt" in
+      "Yes") OPEN_FUN="Yes"; break ;;
+      "No")  OPEN_FUN="No";  break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+}
+
+prompt_make_command_and_run_now() {
+  echo
+  echo "Create a 'runClient' helper script in your home folder (Fabric) or project folder (NeoForge)?"
+  select opt in "Yes" "No"; do
+    case "$opt" in
+      "Yes") MAKE_COMMAND="Yes"; break ;;
+      "No")  MAKE_COMMAND="No";  break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+
+  echo
+  echo "Run the dev client after setup?"
+  select opt in "Yes" "No"; do
+    case "$opt" in
+      "Yes") RUN_CLIENT_NOW="Yes"; break ;;
+      "No")  RUN_CLIENT_NOW="No";  break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+}
+
+prompt_clone_dir_and_project_name() {
+  local default_name="$1"
+  local project_var_name="$2"
+
+  echo
+  read -r -p "Project name [$default_name]: " pname
+  pname="${pname:-$default_name}"
+
+  echo
+  echo "Where should the project folder be created?"
+  echo "1) Use default (home folder: $DEFAULT_CLONE_DIR)"
+  echo "2) Choose a custom directory"
+  while true; do
+    read -r -p "Select 1 or 2 [1]: " clone_choice
+    clone_choice="${clone_choice:-1}"
+    case "$clone_choice" in
+      1)
+        CLONE_DIR="$DEFAULT_CLONE_DIR"
+        break
+        ;;
+      2)
+        while true; do
+          read -r -p "Enter custom clone directory path: " custom_dir
+          if [ -d "$custom_dir" ]; then
+            CLONE_DIR="$custom_dir"
+            break
+          else
+            echo "Directory '$custom_dir' does not exist. Try again."
+          fi
+        done
+        break
+        ;;
+      *)
+        echo "Invalid choice, enter 1 or 2."
+        ;;
+    esac
+  done
+  CLONE_DIR="${CLONE_DIR%/}"
+
+  if [ "$project_var_name" = "NEOPROJECT_NAME" ]; then
+    NEOPROJECT_NAME="$pname"
+    NEO_CLONE_DIR="$CLONE_DIR"
+    NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEOPROJECT_NAME"
+  else
+    FABRIC_PROJECT_NAME="$pname"
+    FABRIC_CLONE_DIR="$CLONE_DIR"
+    FABRIC_PROJECT_DIR="$FABRIC_CLONE_DIR/$FABRIC_PROJECT_NAME"
+  fi
+}
+
+prompt_extra_mods_list() {
+  echo
+  echo "Do you want to add extra mods to the dev instance?"
+  select opt in "No" "Yes"; do
+    case "$opt" in
+      "No")  MODS_CHOICE="No";  EXTRA_MODS=""; break ;;
+      "Yes") MODS_CHOICE="Yes"; break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+
+  if [ "$MODS_CHOICE" = "Yes" ]; then
+    echo
+    echo "Paste full paths to mods (jars), one per line."
+    echo "End with an empty line."
+    EXTRA_MODS=""
+    while IFS= read -r line; do
+      [ -z "$line" ] && break
+      EXTRA_MODS+="${line}"$'\n'
+    done
+  fi
+}
+
+prompt_import_config() {
+  echo
+  echo "Do you want to import an existing config folder into this dev instance?"
+  select opt in "No" "Yes"; do
+    case "$opt" in
+      "No")  IMPORT_CONFIG_CHOICE="No";  IMPORT_CONFIG_PATH=""; break ;;
+      "Yes") IMPORT_CONFIG_CHOICE="Yes"; break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+
+  if [ "$IMPORT_CONFIG_CHOICE" = "Yes" ]; then
+    while true; do
+      echo
+      echo "Enter the full path to the existing config folder (e.g. your .minecraft/config):"
+      read -r IMPORT_CONFIG_PATH
+      if [ -d "$IMPORT_CONFIG_PATH" ]; then
+        break
+      else
+        echo "Directory '$IMPORT_CONFIG_PATH' does not exist. Try again."
+      fi
+    done
+  fi
+}
+
+import_config_into() {
+  local target_config_dir="$1"
+  if [ "$IMPORT_CONFIG_CHOICE" = "Yes" ] && [ -n "${IMPORT_CONFIG_PATH:-}" ]; then
+    echo
+    echo -e "${GREEN}[CONFIG] Importing configs from '$IMPORT_CONFIG_PATH' into '$target_config_dir' ...${NC}"
+    mkdir -p "$target_config_dir"
+    cp -R "$IMPORT_CONFIG_PATH"/. "$target_config_dir"/ 2>/dev/null || true
+  fi
+}
+
+run_fabric_setup() {
+  echo
+  echo -e "${GREEN}=== Fabric Example Mod dev setup (macOS) ===${NC}"
+
+  read -r -p "Minecraft version for Fabric [$DEFAULT_FABRIC_VERSION]: " MC_VERSION
+  MC_VERSION="${MC_VERSION:-$DEFAULT_FABRIC_VERSION}"
+
+  prompt_clone_dir_and_project_name "$DEFAULT_FABRIC_PROJECT_NAME" "FABRIC_PROJECT_NAME"
+  prompt_extra_mods_list
+  FABRIC_MODS_CHOICE="$MODS_CHOICE"
+  FABRIC_EXTRA_MODS="$EXTRA_MODS"
+  prompt_import_config
+
+  echo
+  echo -e "${GREEN}=== Summary (Fabric) ===${NC}"
+  echo "Project name:       $FABRIC_PROJECT_NAME"
+  echo "Clone directory:    $FABRIC_CLONE_DIR"
+  echo "Full project path:  $FABRIC_PROJECT_DIR"
+  echo "Minecraft version:  $MC_VERSION"
+  echo "Extra mods choice:  $FABRIC_MODS_CHOICE"
+  [ "$FABRIC_MODS_CHOICE" = "Yes" ] && echo "Extra mods list:    (paths shown below):" && printf "%s" "$FABRIC_EXTRA_MODS"
+  echo "Import config:      $IMPORT_CONFIG_CHOICE"
+  [ "$IMPORT_CONFIG_CHOICE" = "Yes" ] && echo "Config source:      $IMPORT_CONFIG_PATH"
+  echo "========================"
+
+  if [ -d "$FABRIC_PROJECT_DIR" ]; then
+    echo
+    echo -e "${GREEN}Directory '$FABRIC_PROJECT_DIR' already exists, aborting to avoid overwrite.${NC}"
+    exit 1
+  fi
+
+  prompt_make_command_and_run_now
+  prompt_entertainment_choice
+
+  FABRIC_RUN_MODS_DIR="$FABRIC_CLONE_DIR/Minecrak/run/mods"
+  FABRIC_RUN_SAVES_DIR="$FABRIC_CLONE_DIR/Minecrak/run/saves"
+  FABRIC_RUN_CONFIG_DIR="$FABRIC_PROJECT_DIR/run/config"
+
+  echo
+  echo "Minecrak mods dir:  $FABRIC_RUN_MODS_DIR"
+  echo "Minecrak saves dir: $FABRIC_RUN_SAVES_DIR"
+  echo
+
+  if [ "$OPEN_FUN" = "Yes" ]; then
+    echo -e "${GREEN}[INFO] Opening entertainment URL while we download...${NC}"
+    open "$ENTERTAINMENT_URL" >/dev/null 2>&1 &
+  fi
+
+  echo -e "${GREEN}[1/7] Cloning Fabric example mod into '$FABRIC_PROJECT_DIR'...${NC}"
+  CREATED_PROJECT_DIR="$FABRIC_PROJECT_DIR"
+  git clone "$FABRIC_EXAMPLE_REPO" "$FABRIC_PROJECT_DIR"
+  cd "$FABRIC_PROJECT_DIR"
+  echo -e "${GREEN}[DEBUG] Now in $FABRIC_PROJECT_DIR${NC}"
+
+  mkdir -p dev-mods run/mods
+
+  echo -e "${GREEN}[2/7] Downloading Mod Menu into dev-mods/, run/mods/, and Minecrak run/mods...${NC}"
+  curl -L -o dev-mods/modmenu.jar "https://cdn.modrinth.com/data/mOgUt4GM/versions/latest/download"
+  cp dev-mods/modmenu.jar run/mods/ || true
+  mkdir -p "$FABRIC_RUN_MODS_DIR"
+  cp dev-mods/modmenu.jar "$FABRIC_RUN_MODS_DIR" || true
+
+  if [ "$FABRIC_MODS_CHOICE" = "Yes" ] && [ -n "$FABRIC_EXTRA_MODS" ]; then
+    while IFS= read -r modpath; do
+      [ -z "$modpath" ] && continue
+      echo -e "${GREEN}[DEBUG] Copying extra mod: $modpath${NC}"
+      cp "$modpath" run/mods/ || true
+      cp "$modpath" "$FABRIC_RUN_MODS_DIR" || true
+    done <<< "$FABRIC_EXTRA_MODS"
+  fi
+
+  import_config_into "$FABRIC_RUN_CONFIG_DIR"
+
+  echo -e "${GREEN}[3/7] Running ./gradlew build ...${NC}"
+  ./gradlew build
+
+  echo -e "${GREEN}[4/7] Running ./gradlew runClient ...${NC}"
+  set +e
+  ./gradlew runClient
+  RUN_EXIT=$?
+  set -e
+
+  if [ $RUN_EXIT -ne 0 ]; then
+    echo
+    echo -e "${GREEN}[WARN] Fabric dev client exited with non-zero code ($RUN_EXIT). This is usually a mod crash or dependency issue; check the log above.${NC}"
+    exit 1
+  fi
+
+  if [ "$MAKE_COMMAND" = "Yes" ]; then
+    echo -e "${GREEN}[5/7] Creating runClient helper script for Fabric...${NC}"
+    RUN_CMD_PATH="$HOME/run_minecrak_fabric.sh"
+    cat > "$RUN_CMD_PATH" <<EOF
+#!/usr/bin/env bash
+cd "$FABRIC_PROJECT_DIR"
+./gradlew runClient
+EOF
+    chmod +x "$RUN_CMD_PATH"
+    echo "Created: $RUN_CMD_PATH"
+  fi
+
+  UNINSTALL_CMD="$FABRIC_PROJECT_DIR/uninstall-minecrak-fabric.command"
+  cat > "$UNINSTALL_CMD" <<EOF
+#!/usr/bin/env bash
+echo "This will delete the Fabric project at:"
+echo "  $FABRIC_PROJECT_DIR"
+read -r -p "Type 'DELETE' to confirm: " ans
+if [ "\$ans" = "DELETE" ]; then
+  rm -rf "$FABRIC_PROJECT_DIR"
+  echo "Deleted."
+else
+  echo "Cancelled."
+fi
+EOF
+  chmod +x "$UNINSTALL_CMD"
+
+  CREATED_PROJECT_DIR=""
+  echo
+  echo -e "${GREEN}=== Fabric setup complete ===${NC}"
+  echo "Project created at: $FABRIC_PROJECT_DIR"
+  echo "To uninstall later, double-click:"
+  echo "  $UNINSTALL_CMD"
+}
+
 run_neoforge_setup() {
   echo
   echo -e "${GREEN}=== NeoForge dev setup (MDK clone) ===${NC}"
@@ -151,3 +466,25 @@ EOF
   echo "To uninstall later, double-click:"
   echo "  $UNINSTALL_CMD"
 }
+
+main_once() {
+  prompt_loader_choice
+
+  if [ "$LOADER" = "Fabric" ]; then
+    run_fabric_setup
+  else
+    run_neoforge_setup
+  fi
+}
+
+while true; do
+  main_once
+
+  echo
+  echo "Press Enter to run the setup again, or type anything then Enter to quit."
+  read -r retry
+  if [ -n "$retry" ]; then
+    echo "Exiting."
+    break
+  fi
+done
