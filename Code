@@ -1,128 +1,66 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# =========================
-# 0) Ensure swiftDialog is installed
-# =========================
-install_swiftdialog_if_needed() {
-  local dialogApp="/Library/Application Support/Dialog/Dialog.app"
-  local dialogBin="/usr/local/bin/dialog"
-  local expectedTeamID="PWA5E9TQ59"
-
-  if [ -x "$dialogBin" ] && [ -d "$dialogApp" ]; then
-    return 0
-  fi
-
-  echo "swiftDialog not found, downloading and installing..."
-
-  local dialogURL
-  dialogURL="$(curl --silent --fail "https://api.github.com/repos/bartreardon/swiftDialog/releases/latest" \
-    | awk -F '"' '/browser_download_url/ && /pkg/ { print $4; exit }')"
-
-  if [ -z "$dialogURL" ]; then
-    echo "Failed to get swiftDialog download URL."
-    exit 1
-  fi
-
-  local workDirectory tempDirectory
-  workDirectory=$( /usr/bin/basename "$0" )
-  tempDirectory=$( /usr/bin/mktemp -d "/private/tmp/$workDirectory.XXXXXX" )
-
-  local pkgPath="$tempDirectory/Dialog.pkg"
-  /usr/bin/curl --location --silent "$dialogURL" -o "$pkgPath"
-
-  # Verify Team ID (security check)
-  local teamID
-  teamID=$(/usr/sbin/spctl -a -vv -t install "$pkgPath" 2>&1 | awk '/origin=/ {print $NF}' | tr -d '()')
-
-  if [[ "$expectedTeamID" != "$teamID" ]]; then
-    echo "swiftDialog Team ID mismatch. Expected $expectedTeamID, got $teamID"
-    exit 1
-  fi
-
-  /usr/sbin/installer -pkg "$pkgPath" -target /
-  sleep 2
-
-  rm -rf "$tempDirectory"
-}
-
-install_swiftdialog_if_needed
-
-DIALOG_BIN="/usr/local/bin/dialog"
-
-# =========================
-# 1) Defaults
-# =========================
 DEFAULT_CLONE_DIR="$HOME"
 DEFAULT_PROJECT_NAME="Minecrak Neo"
 DEFAULT_NEO_VERSION="1.21.11"
 DEFAULT_MDK_REPO="https://github.com/NeoForgeMDKs/MDK-1.21.11-NeoGradle.git"
 
 CREATED_PROJECT_DIR=""
-PROGRESS_CMD_FILE="$(mktemp /tmp/minecrak-dialog-progress.XXXXXX)"
 
 cleanup() {
   if [ -n "${CREATED_PROJECT_DIR:-}" ] && [ -d "$CREATED_PROJECT_DIR" ]; then
-    echo "Cleaning up project directory: $CREATED_PROJECT_DIR"
+    echo "Cleaning up project directory:"
+    echo "  $CREATED_PROJECT_DIR"
     rm -rf "$CREATED_PROJECT_DIR"
+    echo "Cleanup done."
   fi
-  [ -f "$PROGRESS_CMD_FILE" ] && rm -f "$PROGRESS_CMD_FILE"
 }
 trap cleanup EXIT
 
-update_progress() {
-  for line in "$@"; do
-    echo "$line" >> "$PROGRESS_CMD_FILE"
-  done
+run_gui() {
+  /usr/bin/osascript <<EOT
+set theTitle to "Minecrak Dev Setup"
+set thePrompt to "Configure your NeoForge dev project."
+
+-- Project name
+set projectName to text returned of (display dialog "Project name:" default answer "$DEFAULT_PROJECT_NAME" with title theTitle)
+
+-- Clone directory (default: home)
+set homePOSIX to POSIX path of (path to home folder)
+set cloneDir to text returned of (display dialog "Clone directory (where the project folder will be created):" default answer homePOSIX with title theTitle)
+
+-- Mods choice
+set modsButtons to {"No Mods", "Select Mods"}
+set modsChoiceButton to button returned of (display dialog "Do you want to add extra mods to the dev instance?" buttons modsButtons default button 1 with title theTitle)
+
+set modsChoice to "No"
+set modsFolder to ""
+if modsChoiceButton is "Select Mods" then
+    set modsChoice to "Yes"
+    set modsFolder to POSIX path of (choose folder with prompt "Select the folder containing your mods (jars)." default location (path to home folder))
+end if
+
+-- Make runClient command?
+set cmdButtons to {"No", "Yes"}
+set cmdChoiceButton to button returned of (display dialog "Create a 'runClient' shell command in your home folder?" buttons cmdButtons default button 2 with title theTitle)
+set makeCommand to "No"
+if cmdChoiceButton is "Yes" then set makeCommand to "Yes"
+
+-- Run client after setup?
+set runButtons to {"No", "Yes"}
+set runClientButton to button returned of (display dialog "Run the dev client after setup?" buttons runButtons default button 2 with title theTitle)
+set runClientNow to "No"
+if runClientButton is "Yes" then set runClientNow to "Yes"
+
+return "NeoForge|" & projectName & "|" & cloneDir & "|" & modsChoice & "|" & modsFolder & "|" & makeCommand & "|" & runClientNow
+EOT
 }
 
-# =========================
-# 2) Options form GUI
-# =========================
-run_options_form() {
-  "$DIALOG_BIN" \
-    --title "Minecrak Dev Setup" \
-    --message "Configure your NeoForge dev project." \
-    --icon system:hammer \
-    --width 600 \
-    --height 400 \
-    --textfield "Project Name:,$DEFAULT_PROJECT_NAME" \
-    --textfield "Clone Folder:,$DEFAULT_CLONE_DIR" \
-    --checkbox "Add Extra Mods?,false" \
-    --textfield "Mods Folder (if enabled):," \
-    --checkbox "Create runClient command in home?,true" \
-    --checkbox "Run client after setup?,true" \
-    --button1text "Start" \
-    --button2text "Cancel" \
-    --json
-}
+GUI_RESULT="$(run_gui)"
+IFS='|' read -r LOADER NEOPROJECT_NAME NEO_CLONE_DIR NEO_MODS_CHOICE NEO_MODS_FOLDER MAKE_COMMAND RUN_CLIENT_NOW <<<"$GUI_RESULT"
 
-FORM_JSON="$(run_options_form)" || exit 1
-
-readarray -t parsed <<<"$(
-  /usr/bin/python3 <<EOF
-import json, sys
-data = json.load(sys.stdin)
-fields = data.get("textfield", {})
-checks = data.get("checkbox", {})
-print(fields.get("Project Name:", "Minecrak Neo"))
-print(fields.get("Clone Folder:", "$HOME"))
-print("Yes" if checks.get("Add Extra Mods?", False) else "No")
-print(fields.get("Mods Folder (if enabled):", ""))
-print("Yes" if checks.get("Create runClient command in home?", True) else "No")
-print("Yes" if checks.get("Run client after setup?", True) else "No")
-EOF
-" <<<"$FORM_JSON"
-)"
-
-NEOPROJECT_NAME="${parsed[0]}"
-NEO_CLONE_DIR="${parsed[1]%/}"
-NEO_MODS_CHOICE="${parsed[2]}"
-NEO_MODS_FOLDER="${parsed[3]}"
-MAKE_COMMAND="${parsed[4]}"
-RUN_CLIENT_NOW="${parsed[5]}"
-LOADER="NeoForge"
-
+NEO_CLONE_DIR="${NEO_CLONE_DIR%/}"
 NEO_PROJECT_DIR="${NEO_CLONE_DIR}/${NEOPROJECT_NAME}"
 
 echo "[DEBUG] LOADER: $LOADER"
@@ -136,53 +74,52 @@ echo "[DEBUG] RUN_CLIENT_NOW: $RUN_CLIENT_NOW"
 echo "[DEBUG] NEO_VERSION_CHOICE: $DEFAULT_NEO_VERSION"
 echo "[DEBUG] NEO_MDK_REPO: $DEFAULT_MDK_REPO"
 
+echo "=== NeoForge dev setup (MDK clone) ==="
+echo "Minecraft version:   ${DEFAULT_NEO_VERSION}"
+echo "MDK repo:            ${DEFAULT_MDK_REPO}"
+echo "Project name:        ${NEOPROJECT_NAME}"
+echo "Clone directory:     ${NEO_CLONE_DIR}"
+echo "Full project path:   ${NEO_PROJECT_DIR}"
+if [ "$NEO_MODS_CHOICE" = "Yes" ]; then
+  echo "Mods folder:         ${NEO_MODS_FOLDER}"
+else
+  echo "Mods folder:         (none)"
+fi
+echo "======================================"
+
 if [ -d "$NEO_PROJECT_DIR" ]; then
-  "$DIALOG_BIN" \
-    --title "Minecrak Dev Setup" \
-    --message "Directory '$NEO_PROJECT_DIR' already exists. Aborting to avoid overwrite." \
-    --icon system:caution \
-    --button1text "OK"
+  /usr/bin/osascript <<EOT
+display dialog "Directory '$NEO_PROJECT_DIR' already exists. Aborting to avoid overwrite." buttons {"OK"} default button 1 with title "Minecrak Dev Setup"
+EOT
   exit 1
 fi
 
-# =========================
-# 3) Progress window
-# =========================
-"$DIALOG_BIN" \
-  --title "Minecrak Dev Setup" \
-  --message "Setting up project: $NEOPROJECT_NAME" \
-  --icon system:hammer \
-  --progress \
-  --progresstext "Starting..." \
-  --commandfile "$PROGRESS_CMD_FILE" &
-
-DIALOG_PID=$!
-sleep 0.2
-
-# =========================
-# 4) Work with updates
-# =========================
 CREATED_PROJECT_DIR="$NEO_PROJECT_DIR"
 
-update_progress "progresstext: Cloning MDK..." "progress: 10"
+# Show "status" dialogs/notifications as it works
+/usr/bin/osascript -e 'display notification "Cloning MDK repository..." with title "Minecrak Dev Setup"'
+echo "Cloning MDK..."
 git clone "$DEFAULT_MDK_REPO" "$NEO_PROJECT_DIR"
 
 cd "$NEO_PROJECT_DIR"
 
 if [ "$NEO_MODS_CHOICE" = "Yes" ] && [ -n "$NEO_MODS_FOLDER" ]; then
   if [ -d "$NEO_MODS_FOLDER" ]; then
-    update_progress "progresstext: Copying mods..." "progress: 30"
+    /usr/bin/osascript -e 'display notification "Copying extra mods..." with title "Minecrak Dev Setup"'
+    echo "Copying mods..."
     mkdir -p run/mods
     cp "$NEO_MODS_FOLDER"/*.jar run/mods/ || true
   else
-    update_progress "progresstext: Mods folder not found, skipping mods." "progress: 30"
+    /usr/bin/osascript -e 'display notification "Mods folder not found, skipping mods." with title "Minecrak Dev Setup"'
+    echo "Mods folder not found, skipping mods."
   fi
 else
-  update_progress "progresstext: Skipping extra mods..." "progress: 30"
+  echo "Skipping extra mods."
 fi
 
 if [ "$MAKE_COMMAND" = "Yes" ]; then
-  update_progress "progresstext: Creating runClient command..." "progress: 50"
+  /usr/bin/osascript -e 'display notification "Creating runClient command..." with title "Minecrak Dev Setup"'
+  echo "Creating runClient helper script..."
   RUN_CMD_PATH="$HOME/run_minecrak_neo.sh"
   cat > "$RUN_CMD_PATH" <<EOF
 #!/usr/bin/env bash
@@ -192,31 +129,24 @@ EOF
   chmod +x "$RUN_CMD_PATH"
 fi
 
-update_progress "progresstext: Running initial Gradle tasks..." "progress: 70"
+/usr/bin/osascript -e 'display notification "Running initial Gradle tasks..." with title "Minecrak Dev Setup"'
+echo "Running initial Gradle tasks (gradlew --version)..."
 ./gradlew --version >/dev/null 2>&1 || true
 
 if [ "$RUN_CLIENT_NOW" = "Yes" ]; then
-  update_progress "progresstext: Running dev client..." "progress: 85"
+  /usr/bin/osascript -e 'display notification "Running dev client..." with title "Minecrak Dev Setup"'
+  echo "Running dev client..."
   ./gradlew runClient || true
 fi
 
-update_progress "progresstext: Done!" "progress: 100"
-sleep 0.5
-
-kill "$DIALOG_PID" 2>/dev/null || true
-
 CREATED_PROJECT_DIR=""
 
-"$DIALOG_BIN" \
-  --title "Minecrak Dev Setup" \
-  --message "NeoForge setup is complete.\nProject: $NEOPROJECT_NAME" \
-  --icon system:checkmark.seal \
-  --button1text "OK"
+/usr/bin/osascript <<EOT
+display notification "NeoForge setup is complete." with title "Minecraft Dev Setup" subtitle "Project: $NEOPROJECT_NAME"
+EOT
 
-# =========================
-# 5) Press Return to restart
-# =========================
 echo
+echo "Setup complete for project: $NEOPROJECT_NAME"
 echo "Press Enter to run the setup again with the same script, or type anything then Enter to quit."
 read -r retry
 if [ -z "$retry" ]; then
