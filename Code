@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TARGET_MODS_DIR="/Users/ps/TBS/runs/client/mods"
+NEO_PROJECT_DIR="/Users/ps/TBS"
+SOURCE_MODS_DIR="$NEO_PROJECT_DIR/mods"
+TARGET_MODS_DIR="$NEO_PROJECT_DIR/runs/client/mods"
+
+cd "$NEO_PROJECT_DIR"
+
 mkdir -p "$TARGET_MODS_DIR"
 
-echo "Drag and drop each mod file here, then press Enter on an empty line when done."
-while true; do
-  read -r -p "Mod file path (or just Enter to finish): " modpath
-  [ -z "$modpath" ] && break
-  modpath="${modpath/#\~/$HOME}"
-  if [ -f "$modpath" ]; then
-    cp "$modpath" "$TARGET_MODS_DIR"
-    echo "Copied: $modpath -> $TARGET_MODS_DIR"
-  else
-    echo "Not a file: $modpath"
-  fi
-done
+if [ -d "$SOURCE_MODS_DIR" ]; then
+  find "$SOURCE_MODS_DIR" -maxdepth 1 -type f -name '*.jar' -print0 | while IFS= read -r -d '' f; do
+    mv "$f" "$TARGET_MODS_DIR/"
+  done
+fi
 
-echo "All done. Mods are now in: $TARGET_MODS_DIR"
+./gradlew runClient
