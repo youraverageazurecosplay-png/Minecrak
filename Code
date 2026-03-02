@@ -111,7 +111,7 @@ import_config_into() {
 
 create_neo_uninstaller() {
   local dir="$1"
-  local script="$dir/uninstall-minecrak-neo.command"
+  local script="$dir/uninstall-neoforge.command"
   cat > "$script" <<EOF
 #!/usr/bin/env bash
 echo "This will delete the NeoForge project at:"
@@ -128,7 +128,7 @@ EOF
 }
 
 main() {
-  echo -e "${GREEN}=== Minecrak NeoForge Dev Setup (ONLY NeoForge) ===${NC}"
+  echo -e "${GREEN}=== NeoForge Dev Setup (ONLY NeoForge, no Fabric) ===${NC}"
 
   read -r -p "NeoForge Minecraft version (e.g. 1.21.1, 1.21.11) [$DEFAULT_NEO_VERSION]: " NEO_VERSION_CHOICE
   NEO_VERSION_CHOICE="${NEO_VERSION_CHOICE:-$DEFAULT_NEO_VERSION}"
@@ -201,15 +201,15 @@ main() {
   import_config_into "$NEO_CONFIG_DIR"
 
   echo
-  echo -e "${GREEN}[3.5/4] Creating run-neoforge.command helper in the project root...${NC}"
-  RUN_CMD_PATH="$NEO_PROJECT_DIR/run-neoforge.command"
-  cat > "$RUN_CMD_PATH" <<EOF
+  echo -e "${GREEN}[3.5/4] Creating start-neoforge.command helper in the project root...${NC}"
+  START_CMD="$NEO_PROJECT_DIR/start-neoforge.command"
+  cat > "$START_CMD" <<EOF
 #!/usr/bin/env bash
 cd "\$(dirname "\$0")"
 ./gradlew runClient
 EOF
-  chmod +x "$RUN_CMD_PATH"
-  echo "Created: $RUN_CMD_PATH"
+  chmod +x "$START_CMD"
+  echo "Created: $START_CMD"
 
   echo
   echo -e "${GREEN}[4/4] Creating NeoForge uninstaller...${NC}"
@@ -220,8 +220,8 @@ EOF
   echo "Project:      $NEO_PROJECT_DIR"
   echo "Mods go in:   $NEO_PROJECT_DIR/runs/client/mods"
   echo "Config goes:  $NEO_PROJECT_DIR/runs/client/config"
-  echo "To run:       double-click $NEO_PROJECT_DIR/run-neoforge.command"
-  echo "To uninstall: double-click $NEO_PROJECT_DIR/uninstall-minecrak-neo.command"
+  echo "To run:       double-click $NEO_PROJECT_DIR/start-neoforge.command"
+  echo "To uninstall: double-click $NEO_PROJECT_DIR/uninstall-neoforge.command"
 }
 
 main
