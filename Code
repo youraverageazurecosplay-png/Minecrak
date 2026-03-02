@@ -1,0 +1,567 @@
+cat > mc_dev_master.sh << 'EOF'
+#!/usr/bin/env bash
+set -e
+
+PREREQ=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    display dialog "Install required tools (Homebrew, Java, git, curl) if missing?" ¬
+        with title "Minecraft Dev Setup" buttons {"Skip", "Install"} default button "Install"
+    set theButton to button returned of the result
+end tell
+return theButton
+EON
+)
+
+echo "[DEBUG] PREREQ choice: $PREREQ"
+
+if [ "$PREREQ" = "Install" ]; then
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "[DEBUG] Homebrew not found, installing..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  else
+    echo "[DEBUG] Homebrew already installed."
+  fi
+
+  echo "[DEBUG] Installing OpenJDK (Java)..."
+  brew install openjdk
+
+  echo "[DEBUG] Installing git..."
+  brew install git
+
+  echo "[DEBUG] Installing curl..."
+  brew install curl
+fi
+
+LOADER=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    display dialog "Choose mod loader environment:" ¬
+        with title "Minecraft Dev Setup" buttons {"NeoForge", "Fabric"} default button "Fabric"
+    set theButton to button returned of the result
+end tell
+return theButton
+EON
+)
+
+echo "[DEBUG] LOADER: $LOADER"
+
+-- Friendly explanation dialog in simple English
+osascript << 'EON'
+tell application "System Events"
+    activate
+    if "'$LOADER'" is "Fabric" then
+        display dialog "You chose FABRIC.\n\nThis script will:\n• Download a ready-made Fabric mod project.\n• Put your chosen mods into a special dev 'mods' folder.\n• (Optional) Copy a world for testing.\n• (Optional) Run a separate Minecraft just for mod testing.\n\nThis will NOT change your normal Minecraft or launcher.\n\nClick Continue to keep going." ¬
+            with title "Fabric Dev Setup Info" buttons {"Stop", "Continue"} default button "Continue"
+    else
+        display dialog "You chose NEOFORGE.\n\nThis script will:\n• Download a ready-made NeoForge mod project.\n• Put your chosen mods into a special dev 'mods' folder.\n• (Optional) Run a separate Minecraft just for mod testing.\n\nThis will NOT change your normal Minecraft or launcher.\n\nClick Continue to keep going." ¬
+            with title "NeoForge Dev Setup Info" buttons {"Stop", "Continue"} default button "Continue"
+    end if
+    set theButton to button returned of the result
+    if theButton is "Stop" then error number -128
+end tell
+EON
+
+MAKE_COMMAND=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    display dialog "Create a .command launcher file for this project?\n\n(That file lets you build + run the dev Minecraft later with a double-click.)" ¬
+        with title "Minecraft Dev Setup" buttons {"No", "Yes"} default button "Yes"
+    set theButton to button returned of the result
+end tell
+return theButton
+EON
+)
+
+echo "[DEBUG] MAKE_COMMAND: $MAKE_COMMAND"
+
+RUN_CLIENT_NOW=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    display dialog "Run the dev Minecraft now after setup?\n\nYes = After setup, Minecraft opens in a separate dev instance.\nNo  = Just prepare everything, you can run it later using the .command file or Gradle." ¬
+        with title "Minecraft Dev Setup" buttons {"No", "Yes"} default button "Yes"
+    set theButton to button returned of the result
+end tell
+return theButton
+EON
+)
+
+echo "[DEBUG] RUN_CLIENT_NOW: $RUN_CLIENT_NOW"
+
+# =================== NEOFORGE PATH (clone MDK template with version chooser) ===================
+if [ "$LOADER" = "NeoForge" ]; then
+  NEO_VERSION_CHOICE=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theDialog to display dialog "Choose NeoForge Minecraft version:" ¬
+        with title "NeoForge Dev" ¬
+        buttons {"1.21.11", "1.21.1"} default button "1.21.11"
+    set theButton to button returned of theDialog
+end tell
+return theButton
+EON
+  )
+
+  echo "[DEBUG] NEO_VERSION_CHOICE: $NEO_VERSION_CHOICE"
+
+  case "$NEO_VERSION_CHOICE" in
+    "1.21.11")
+      NEO_MDK_REPO="https://github.com/NeoForgeMDKs/MDK-1.21.11-NeoGradle.git"
+      ;;
+    "1.21.1")
+      NEO_MDK_REPO="https://github.com/NeoForgeMDKs/MDK-1.21.1-NeoGradle.git"
+      ;;
+    *)
+      echo "Unsupported NeoForge version choice: $NEO_VERSION_CHOICE"
+      exit 1
+      ;;
+  esac
+
+  echo "[DEBUG] NEO_MDK_REPO: $NEO_MDK_REPO"
+
+  NEOPROJECT_NAME=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theDialog to display dialog "Enter NeoForge project name:" ¬
+        with title "NeoForge Dev" ¬
+        default answer "neoforge-mod-" & (do shell script "date +%Y%m%d-%H%M%S")
+    set theText to text returned of theDialog
+end tell
+return theText
+EON
+  )
+
+  echo "[DEBUG] NEOPROJECT_NAME: $NEOPROJECT_NAME"
+
+  if [ -z "$NEOPROJECT_NAME" ]; then
+    echo "No project name entered, aborting."
+    exit 1
+  fi
+
+  NEO_CLONE_DIR=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theFolder to choose folder with prompt "Choose the folder where the NeoForge project should be created:"
+    set thePath to POSIX path of theFolder
+end tell
+return thePath
+EON
+  )
+
+  echo "[DEBUG] NEO_CLONE_DIR: $NEO_CLONE_DIR"
+
+  if [ -z "$NEO_CLONE_DIR" ]; then
+    echo "No folder selected, aborting."
+    exit 1
+  fi
+
+  NEO_PROJECT_DIR="${NEO_CLONE_DIR%/}/$NEOPROJECT_NAME"
+
+  NEO_MODS_CHOICE=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    display dialog "Do you want to add extra NeoForge mods (.jar files) to the dev Minecraft?\n\nThese go into a special dev 'mods' folder used only for testing." ¬
+        with title "NeoForge Dev" buttons {"No", "Yes"} default button "No"
+    set theButton to button returned of the result
+end tell
+return theButton
+EON
+  )
+
+  echo "[DEBUG] NEO_MODS_CHOICE: $NEO_MODS_CHOICE"
+
+  NEO_EXTRA_MODS=""
+  if [ "$NEO_MODS_CHOICE" = "Yes" ]; then
+    NEO_EXTRA_MODS=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theFiles to choose file with prompt "Choose one or more NeoForge mod .jar files (Command-click to select multiple):" ¬
+        of type {"jar"} ¬
+        with multiple selections allowed
+    set outText to ""
+    repeat with f in theFiles
+        set outText to outText & POSIX path of f & linefeed
+    end repeat
+end tell
+return outText
+EON
+    )
+  fi
+
+  echo "[DEBUG] NEO_EXTRA_MODS:"
+  echo "$NEO_EXTRA_MODS"
+
+  echo "=== NeoForge dev setup (MDK clone) ==="
+  echo "Minecraft version:   $NEO_VERSION_CHOICE"
+  echo "MDK repo:            $NEO_MDK_REPO"
+  echo "Project name:        $NEOPROJECT_NAME"
+  echo "Clone directory:     $NEO_CLONE_DIR"
+  echo "Full project path:   $NEO_PROJECT_DIR"
+  echo "Extra mods:"
+  echo "$NEO_EXTRA_MODS"
+  echo
+
+  if [ -d "$NEO_PROJECT_DIR" ]; then
+    echo "Directory '$NEO_PROJECT_DIR' already exists, aborting to avoid overwrite."
+    exit 1
+  fi
+
+  echo "[DEBUG] Cloning NeoForge MDK into $NEO_PROJECT_DIR ..."
+  git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR"
+
+  cd "$NEO_PROJECT_DIR"
+  echo "[DEBUG] Now in $(pwd)"
+
+  if [ -f "gradlew" ]; then
+    chmod +x gradlew
+  else
+    echo "ERROR: gradlew not found in $NEO_PROJECT_DIR (MDK layout changed?)."
+    exit 1
+  fi
+
+  mkdir -p dev-mods
+  mkdir -p run/mods
+  IFS=$'\n'
+  for m in $NEO_EXTRA_MODS; do
+    if [ -n "$m" ]; then
+      echo "[DEBUG] Copying NeoForge mod: $m"
+      cp "$m" dev-mods/
+      cp "$m" run/mods/
+    fi
+  done
+  unset IFS
+
+  if [ "$MAKE_COMMAND" = "Yes" ]; then
+    NEO_RUN_SCRIPT_NAME="run-neoforge-client.command"
+    echo "[DEBUG] Creating NeoForge .command at $(pwd)/$NEO_RUN_SCRIPT_NAME"
+
+    cat > "$NEO_RUN_SCRIPT_NAME" << 'EON'
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+
+chmod +x ./gradlew
+
+mkdir -p dev-mods
+mkdir -p run/mods
+
+echo "Building NeoForge project..."
+./gradlew build
+
+echo "Launching NeoForge dev client..."
+./gradlew runClient
+EON
+
+    chmod +x "$NEO_RUN_SCRIPT_NAME"
+  else
+    echo "[DEBUG] Skipping NeoForge .command creation by user choice."
+  fi
+
+  if [ "$RUN_CLIENT_NOW" = "Yes" ]; then
+    echo "Running ./gradlew runClient for NeoForge dev client (this may take a while the first time)..."
+    ./gradlew runClient
+  else
+    echo "[DEBUG] Skipping immediate NeoForge runClient by user choice."
+  fi
+
+  echo "NeoForge setup complete at: $(pwd)"
+  if [ "$MAKE_COMMAND" = "Yes" ]; then
+    echo "Next time, double-click:"
+    echo "  $(pwd)/$NEO_RUN_SCRIPT_NAME"
+  fi
+
+  osascript <<EON
+display notification "NeoForge setup is complete." with title "Minecraft Dev Setup" subtitle "Project: $NEOPROJECT_NAME"
+EON
+
+  exit 0
+fi
+
+# =================== FABRIC PATH (clone example mod, integrate Minecrak paths) ===================
+
+MC_VERSION=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theDialog to display dialog "Enter Minecraft version (just for tagging this instance):" ¬
+        with title "Fabric Example Mod" ¬
+        default answer "1.21.11"
+    set theText to text returned of theDialog
+end tell
+return theText
+EON
+)
+
+echo "[DEBUG] MC_VERSION: $MC_VERSION"
+
+if [ -z "$MC_VERSION" ]; then
+  echo "No version entered, aborting."
+  exit 1
+fi
+
+PROJECT_NAME=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theDialog to display dialog "Enter Fabric project name:" ¬
+        with title "Fabric Example Mod" ¬
+        default answer "fabric-mod-" & (do shell script "date +%Y%m%d-%H%M%S")
+    set theText to text returned of theDialog
+end tell
+return theText
+EON
+)
+
+echo "[DEBUG] PROJECT_NAME: $PROJECT_NAME"
+
+if [ -z "$PROJECT_NAME" ]; then
+  echo "No project name entered, aborting."
+  exit 1
+fi
+
+CLONE_DIR=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theFolder to choose folder with prompt "Choose the folder where the Fabric project should be created:" 
+    set thePath to POSIX path of theFolder
+end tell
+return thePath
+EON
+)
+
+echo "[DEBUG] CLONE_DIR: $CLONE_DIR"
+
+if [ -z "$CLONE_DIR" ]; then
+  echo "No folder selected, aborting."
+  exit 1
+fi
+
+MODS_CHOICE=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    display dialog "Do you want to add extra Fabric mods (.jar files) to the dev Minecraft?\n\nThese go into a special dev 'mods' folder used only for testing." ¬
+        with title "Fabric Example Mod" buttons {"No", "Yes"} default button "No"
+    set theButton to button returned of the result
+end tell
+return theButton
+EON
+)
+
+echo "[DEBUG] MODS_CHOICE: $MODS_CHOICE"
+
+EXTRA_MODS=""
+if [ "$MODS_CHOICE" = "Yes" ]; then
+  EXTRA_MODS=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theFiles to choose file with prompt "Choose one or more Fabric mod .jar files (Command-click to select multiple):" ¬
+        of type {"jar"} ¬
+        with multiple selections allowed
+    set outText to ""
+    repeat with f in theFiles
+        set outText to outText & POSIX path of f & linefeed
+    end repeat
+end tell
+return outText
+EON
+  )
+fi
+
+echo "[DEBUG] EXTRA_MODS:"
+echo "$EXTRA_MODS"
+
+WORLD_CHOICE=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    display dialog "Do you want to copy an existing world into the dev saves (and Minecrak saves)?\n\nThis makes a copy – it will not touch your original world." ¬
+        with title "Fabric Example Mod" buttons {"No", "Yes"} default button "No"
+    set theButton to button returned of the result
+end tell
+return theButton
+EON
+)
+
+echo "[DEBUG] WORLD_CHOICE: $WORLD_CHOICE"
+
+WORLD_PATH=""
+if [ "$WORLD_CHOICE" = "Yes" ]; then
+  WORLD_PATH=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theFolder to choose folder with prompt "Choose a world folder (e.g. from .minecraft/saves/):"
+    set thePath to POSIX path of theFolder
+end tell
+return thePath
+EON
+  )
+fi
+
+echo "[DEBUG] WORLD_PATH: $WORLD_PATH"
+
+REPO_URL="https://github.com/FabricMC/fabric-example-mod.git"
+PROJECT_DIR="${CLONE_DIR%/}/$PROJECT_NAME"
+RUN_SCRIPT_NAME="run-fabric-client.command"
+
+MINECRAK_GAME_DIR="/Users/ps/Minecrak/run"
+MINECRAK_MODS_DIR="$MINECRAK_GAME_DIR/mods"
+MINECRAK_SAVES_DIR="$MINECRAK_GAME_DIR/saves"
+
+echo "=== Fabric Example Mod dev setup (macOS)==="
+echo "Project name:        $PROJECT_NAME"
+echo "Clone directory:     $CLONE_DIR"
+echo "Full project path:   $PROJECT_DIR"
+echo "Minecraft version:   $MC_VERSION"
+echo "Extra mods:"
+echo "$EXTRA_MODS"
+echo "World folder:        $WORLD_PATH"
+echo "Minecrak mods dir:   $MINECRAK_MODS_DIR"
+echo "Minecrak saves dir:  $MINECRAK_SAVES_DIR"
+echo
+
+if [ -d "$PROJECT_DIR" ]; then
+  echo "[1/7] Directory '$PROJECT_DIR' already exists, aborting to avoid overwrite."
+  exit 1
+else
+  echo "[1/7] Cloning Fabric example mod into '$PROJECT_DIR'..."
+  git clone "$REPO_URL" "$PROJECT_DIR"
+fi
+
+cd "$PROJECT_DIR"
+echo "[DEBUG] Now in $(pwd)"
+
+if [ -f "gradlew" ]; then
+  chmod +x gradlew
+else
+  echo "ERROR: gradlew not found in $PROJECT_DIR."
+  exit 1
+fi
+
+GAME_DIR="$PROJECT_DIR/run"
+RUN_MODS_DIR="$GAME_DIR/mods"
+RUN_SAVES_DIR="$GAME_DIR/saves"
+
+mkdir -p dev-mods
+mkdir -p "$RUN_MODS_DIR"
+mkdir -p "$RUN_SAVES_DIR"
+mkdir -p "$MINECRAK_MODS_DIR"
+mkdir -p "$MINECRAK_SAVES_DIR"
+
+MODMENU_URL="https://cdn.modrinth.com/data/mOgUt4GM/versions/eTCL1uh8/modmenu-7.2.1.jar"
+MODMENU_FILE="dev-mods/modmenu-7.2.1.jar"
+
+echo "[2/7] Downloading Mod Menu into dev-mods/, run/mods/, and Minecrak run/mods/ ..."
+curl -L -o "$MODMENU_FILE" "$MODMENU_URL"
+cp "$MODMENU_FILE" "$RUN_MODS_DIR/"
+cp "$MODMENU_FILE" "$MINECRAK_MODS_DIR/"
+
+IFS=$'\n'
+for m in $EXTRA_MODS; do
+  if [ -n "$m" ]; then
+    echo "[DEBUG] Copying extra mod: $m"
+    cp "$m" dev-mods/
+    cp "$m" "$RUN_MODS_DIR/"
+    cp "$m" "$MINECRAK_MODS_DIR/"
+  fi
+done
+unset IFS
+
+if [ -n "$WORLD_PATH" ]; then
+  echo "[DEBUG] Copying world from '$WORLD_PATH' into dev run/saves/ and Minecrak run/saves/ ..."
+  cp -R "$WORLD_PATH" "$RUN_SAVES_DIR/"
+  cp -R "$WORLD_PATH" "$MINECRAK_SAVES_DIR/"
+fi
+
+echo "MC_VERSION_TAG=$MC_VERSION" > .dev-env
+echo "WORLD_PATH=$WORLD_PATH" >> .dev-env
+
+OPTIONS_FILE="$GAME_DIR/options.txt"
+mkdir -p "$GAME_DIR"
+
+if [ -f "$OPTIONS_FILE" ]; then
+  if grep -q '^soundCategory_master:' "$OPTIONS_FILE"; then
+    sed -i '' 's/^soundCategory_master:.*/soundCategory_master:0.0/' "$OPTIONS_FILE"
+  else
+    echo 'soundCategory_master:0.0' >> "$OPTIONS_FILE"
+  fi
+else
+  echo 'soundCategory_master:0.0' > "$OPTIONS_FILE"
+fi
+
+echo "[3/7] Running ./gradlew build ..."
+./gradlew build
+
+if [ "$RUN_CLIENT_NOW" = "Yes" ]; then
+  echo "[4/7] Running ./gradlew runClient ..."
+  ./gradlew runClient
+else
+  echo "[4/7] Skipping immediate Fabric runClient by user choice."
+fi
+
+if [ "$MAKE_COMMAND" = "Yes" ]; then
+  echo "[5/7] Creating '$RUN_SCRIPT_NAME' to build and run Fabric client later..."
+  echo "[DEBUG] Creating Fabric .command at $(pwd)/$RUN_SCRIPT_NAME"
+
+  cat > "$RUN_SCRIPT_NAME" << 'EON'
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+
+chmod +x ./gradlew
+
+if [ -f ".dev-env" ]; then
+  set -a
+  . ./.dev-env
+  set +a
+fi
+
+GAME_DIR="$(pwd)/run"
+RUN_MODS_DIR="$GAME_DIR/mods"
+RUN_SAVES_DIR="$GAME_DIR/saves"
+MINECRAK_GAME_DIR="/Users/ps/Minecrak/run"
+MINECRAK_MODS_DIR="$MINECRAK_GAME_DIR/mods"
+MINECRAK_SAVES_DIR="$MINECRAK_GAME_DIR/saves"
+
+mkdir -p "$GAME_DIR"
+mkdir -p "$RUN_MODS_DIR"
+mkdir -p "$RUN_SAVES_DIR"
+mkdir -p "$MINECRAK_MODS_DIR"
+mkdir -p "$MINECRAK_SAVES_DIR"
+
+OPTIONS_FILE="$GAME_DIR/options.txt"
+
+if [ -f "$OPTIONS_FILE" ]; then
+  if grep -q '^soundCategory_master:' "$OPTIONS_FILE"; then
+    sed -i '' 's/^soundCategory_master:.*/soundCategory_master:0.0/' "$OPTIONS_FILE"
+  else
+    echo 'soundCategory_master:0.0' >> "$OPTIONS_FILE"
+  fi
+else
+  echo 'soundCategory_master:0.0' > "$OPTIONS_FILE"
+fi
+
+echo "[DEBUG] Running Gradle build from $(pwd)..."
+echo "Building Fabric mod..."
+./gradlew build
+
+echo "[DEBUG] Running Gradle runClient from $(pwd)..."
+echo "Launching Fabric dev client..."
+./gradlew runClient
+EON
+
+  chmod +x "$RUN_SCRIPT_NAME"
+else
+  echo "[DEBUG] Skipping Fabric .command creation by user choice."
+fi
+
+echo "[6/7] Done."
+echo "Fabric project directory:  $(pwd)"
+if [ "$MAKE_COMMAND" = "Yes" ]; then
+  echo "Double-click this file next time to build+run Fabric:"
+  echo "  $(pwd)/$RUN_SCRIPT_NAME"
+fi
+echo "[7/7] Mods copied into dev run/mods and Minecrak run/mods; worlds (if chosen) copied into dev run/saves and Minecrak run/saves; Minecraft master volume defaults to 0% via options.txt."
+
+osascript <<EON
+display notification "Fabric setup is complete." with title "Minecraft Dev Setup" subtitle "Project: $PROJECT_NAME"
+EON
+EOF
+chmod +x mc_dev_master.sh
+./mc_dev_master.sh
