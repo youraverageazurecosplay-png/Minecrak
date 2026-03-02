@@ -2,6 +2,23 @@ cat > mc_dev_master.sh << 'EOF'
 #!/usr/bin/env bash
 set -e
 
+CREATED_PROJECT_DIR=""
+
+cleanup_on_error() {
+  local status=$?
+  if [ $status -ne 0 ] && [ -n "$CREATED_PROJECT_DIR" ] && [ -d "$CREATED_PROJECT_DIR" ]; then
+    echo "===================================="
+    echo "SETUP FAILED (exit code $status)."
+    echo "Cleaning up project directory:"
+    echo "  $CREATED_PROJECT_DIR"
+    rm -rf "$CREATED_PROJECT_DIR"
+    echo "Cleanup done. Please run the script again."
+    echo "===================================="
+  fi
+  exit $status
+}
+trap cleanup_on_error EXIT
+
 PREREQ=$(osascript << 'EON'
 tell application "System Events"
     activate
@@ -46,7 +63,6 @@ EON
 
 echo "[DEBUG] LOADER: $LOADER"
 
--- Friendly explanation dialog in simple English
 osascript << 'EON'
 tell application "System Events"
     activate
@@ -88,7 +104,7 @@ EON
 
 echo "[DEBUG] RUN_CLIENT_NOW: $RUN_CLIENT_NOW"
 
-# =================== NEOFORGE PATH (clone MDK template with version chooser) ===================
+# =================== NEOFORGE PATH ===================
 if [ "$LOADER" = "NeoForge" ]; then
   NEO_VERSION_CHOICE=$(osascript << 'EON'
 tell application "System Events"
@@ -156,6 +172,7 @@ EON
   fi
 
   NEO_PROJECT_DIR="${NEO_CLONE_DIR%/}/$NEOPROJECT_NAME"
+  CREATED_PROJECT_DIR="$NEO_PROJECT_DIR"
 
   NEO_MODS_CHOICE=$(osascript << 'EON'
 tell application "System Events"
@@ -274,10 +291,11 @@ EON
 display notification "NeoForge setup is complete." with title "Minecraft Dev Setup" subtitle "Project: $NEOPROJECT_NAME"
 EON
 
+  CREATED_PROJECT_DIR=""  # success: don't delete
   exit 0
 fi
 
-# =================== FABRIC PATH (clone example mod, integrate Minecrak paths) ===================
+# =================== FABRIC PATH ===================
 
 MC_VERSION=$(osascript << 'EON'
 tell application "System Events"
@@ -333,6 +351,9 @@ if [ -z "$CLONE_DIR" ]; then
   echo "No folder selected, aborting."
   exit 1
 fi
+
+PROJECT_DIR="${CLONE_DIR%/}/$PROJECT_NAME"
+CREATED_PROJECT_DIR="$PROJECT_DIR"
 
 MODS_CHOICE=$(osascript << 'EON'
 tell application "System Events"
@@ -397,7 +418,6 @@ fi
 echo "[DEBUG] WORLD_PATH: $WORLD_PATH"
 
 REPO_URL="https://github.com/FabricMC/fabric-example-mod.git"
-PROJECT_DIR="${CLONE_DIR%/}/$PROJECT_NAME"
 RUN_SCRIPT_NAME="run-fabric-client.command"
 
 MINECRAK_GAME_DIR="/Users/ps/Minecrak/run"
@@ -562,6 +582,8 @@ echo "[7/7] Mods copied into dev run/mods and Minecrak run/mods; worlds (if chos
 osascript <<EON
 display notification "Fabric setup is complete." with title "Minecraft Dev Setup" subtitle "Project: $PROJECT_NAME"
 EON
+
+CREATED_PROJECT_DIR=""  # success: don't delete
 EOF
 chmod +x mc_dev_master.sh
 ./mc_dev_master.sh
