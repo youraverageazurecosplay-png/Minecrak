@@ -1,79 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_PATH="$0"
-
 DEFAULT_CLONE_DIR="$HOME"
-DEFAULT_FABRIC_PROJECT_NAME="Minecrak Fabric"
 DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
-
-DEFAULT_FABRIC_VERSION="1.21.11"
-FABRIC_EXAMPLE_REPO="https://github.com/FabricMC/fabric-example-mod"
 DEFAULT_NEO_VERSION="1.21.1"
-
 ENTERTAINMENT_URL="https://www.youtube.com"
 
 GREEN="\033[0;32m"
 NC="\033[0m"
 
-CREATED_PROJECT_DIR=""
-
-cleanup() {
-  if [ -n "${CREATED_PROJECT_DIR:-}" ] && [ -d "$CREATED_PROJECT_DIR" ]; then
-    echo
-    echo -e "${GREEN}[CLEANUP] Removing incomplete project directory:${NC}"
-    echo "  $CREATED_PROJECT_DIR"
-    rm -rf "$CREATED_PROJECT_DIR"
-  fi
-
-  if [ -n "${SCRIPT_PATH:-}" ] && [ -f "$SCRIPT_PATH" ]; then
-    echo -e "${GREEN}[CLEANUP] Removing installer script file: $SCRIPT_PATH${NC}"
-    rm -f "$SCRIPT_PATH" || true
-  fi
-}
-trap cleanup EXIT
-
-prompt_loader_choice() {
-  echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
-  echo
-  echo "Which loader do you want?"
-  select opt in "Fabric" "NeoForge"; do
-    case "$opt" in
-      "Fabric") LOADER="Fabric"; break ;;
-      "NeoForge") LOADER="NeoForge"; break ;;
-      *) echo "Invalid choice."; ;;
-    esac
-  done
-}
-
-prompt_entertainment_choice() {
-  echo
-  echo "Open something entertaining in your browser while it downloads?"
-  echo "Current URL: $ENTERTAINMENT_URL"
-  select opt in "Yes" "No"; do
-    case "$opt" in
-      "Yes") OPEN_FUN="Yes"; break ;;
-      "No")  OPEN_FUN="No";  break ;;
-      *) echo "Invalid choice."; ;;
-    esac
-  done
-}
-
-prompt_make_command() {
-  echo
-  echo "Create a 'runClient' helper script in your home folder (Fabric) or project folder (NeoForge)?"
-  select opt in "Yes" "No"; do
-    case "$opt" in
-      "Yes") MAKE_COMMAND="Yes"; break ;;
-      "No")  MAKE_COMMAND="No";  break ;;
-      *) echo "Invalid choice."; ;;
-    esac
-  done
-}
-
 prompt_clone_dir_and_project_name() {
   local default_name="$1"
-  local project_var_name="$2"
 
   echo
   read -r -p "Project name [$default_name]: " pname
@@ -109,16 +46,9 @@ prompt_clone_dir_and_project_name() {
     esac
   done
   CLONE_DIR="${CLONE_DIR%/}"
-
-  if [ "$project_var_name" = "NEOPROJECT_NAME" ]; then
-    NEOPROJECT_NAME="$pname"
-    NEO_CLONE_DIR="$CLONE_DIR"
-    NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEOPROJECT_NAME"
-  else
-    FABRIC_PROJECT_NAME="$pname"
-    FABRIC_CLONE_DIR="$CLONE_DIR"
-    FABRIC_PROJECT_DIR="$FABRIC_CLONE_DIR/$FABRIC_PROJECT_NAME"
-  fi
+  NEOPROJECT_NAME="$pname"
+  NEO_CLONE_DIR="$CLONE_DIR"
+  NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEOPROJECT_NAME"
 }
 
 prompt_extra_mods_list() {
@@ -126,20 +56,20 @@ prompt_extra_mods_list() {
   echo "Do you want to add extra mods to the dev instance?"
   select opt in "No" "Yes"; do
     case "$opt" in
-      "No")  MODS_CHOICE="No";  EXTRA_MODS=""; break ;;
-      "Yes") MODS_CHOICE="Yes"; break ;;
+      "No")  NEO_MODS_CHOICE="No";  NEO_EXTRA_MODS=""; break ;;
+      "Yes") NEO_MODS_CHOICE="Yes"; break ;;
       *) echo "Invalid choice."; ;;
     esac
   done
 
-  if [ "$MODS_CHOICE" = "Yes" ]; then
+  if [ "$NEO_MODS_CHOICE" = "Yes" ]; then
     echo
     echo "Paste full paths to mods (jars), one per line."
     echo "End with an empty line."
-    EXTRA_MODS=""
+    NEO_EXTRA_MODS=""
     while IFS= read -r line; do
       [ -z "$line" ] && break
-      EXTRA_MODS+="${line}"$'\n'
+      NEO_EXTRA_MODS+="${line}"$'\n'
     done
   fi
 }
@@ -179,24 +109,6 @@ import_config_into() {
   fi
 }
 
-create_fabric_uninstaller() {
-  local dir="$1"
-  local script="$dir/uninstall-minecrak-fabric.command"
-  cat > "$script" <<EOF
-#!/usr/bin/env bash
-echo "This will delete the Fabric project at:"
-echo "  $dir"
-read -r -p "Type 'DELETE' to confirm: " ans
-if [ "\$ans" = "DELETE" ]; then
-  rm -rf "$dir"
-  echo "Deleted."
-else
-  echo "Cancelled."
-fi
-EOF
-  chmod +x "$script"
-}
-
 create_neo_uninstaller() {
   local dir="$1"
   local script="$dir/uninstall-minecrak-neo.command"
@@ -215,111 +127,16 @@ EOF
   chmod +x "$script"
 }
 
-run_fabric_setup() {
-  echo
-  echo -e "${GREEN}=== Fabric Example Mod dev setup (macOS) ===${NC}"
-
-  read -r -p "Minecraft version for Fabric [$DEFAULT_FABRIC_VERSION]: " MC_VERSION
-  MC_VERSION="${MC_VERSION:-$DEFAULT_FABRIC_VERSION}"
-
-  prompt_clone_dir_and_project_name "$DEFAULT_FABRIC_PROJECT_NAME" "FABRIC_PROJECT_NAME"
-  prompt_extra_mods_list
-  FABRIC_MODS_CHOICE="$MODS_CHOICE"
-  FABRIC_EXTRA_MODS="$EXTRA_MODS"
-  prompt_import_config
-  prompt_make_command
-  prompt_entertainment_choice
-
-  echo
-  echo -e "${GREEN}=== Summary (Fabric) ===${NC}"
-  echo "Project name:       $FABRIC_PROJECT_NAME"
-  echo "Clone directory:    $FABRIC_CLONE_DIR"
-  echo "Full project path:  $FABRIC_PROJECT_DIR"
-  echo "Minecraft version:  $MC_VERSION"
-  echo "Extra mods choice:  $FABRIC_MODS_CHOICE"
-  [ "$FABRIC_MODS_CHOICE" = "Yes" ] && printf "Extra mods list:\n%s" "$FABRIC_EXTRA_MODS"
-  echo "Import config:      $IMPORT_CONFIG_CHOICE"
-  [ "$IMPORT_CONFIG_CHOICE" = "Yes" ] && echo "Config source:      $IMPORT_CONFIG_PATH"
-  echo "Make helper:        $MAKE_COMMAND"
-  echo "========================"
-
-  if [ -d "$FABRIC_PROJECT_DIR" ]; then
-    echo
-    echo -e "${GREEN}Directory '$FABRIC_PROJECT_DIR' already exists, aborting to avoid overwrite.${NC}"
-    exit 1
-  fi
-
-  FABRIC_RUN_MODS_DIR="$FABRIC_CLONE_DIR/Minecrak/run/mods"
-  FABRIC_RUN_SAVES_DIR="$FABRIC_CLONE_DIR/Minecrak/run/saves"
-  FABRIC_RUN_CONFIG_DIR="$FABRIC_PROJECT_DIR/run/config"
-
-  if [ "$OPEN_FUN" = "Yes" ]; then
-    open "$ENTERTAINMENT_URL" >/dev/null 2>&1 &
-  fi
-
-  echo -e "${GREEN}[1/5] Cloning Fabric example mod into '$FABRIC_PROJECT_DIR'...${NC}"
-  CREATED_PROJECT_DIR="$FABRIC_PROJECT_DIR"
-  git clone "$FABRIC_EXAMPLE_REPO" "$FABRIC_PROJECT_DIR"
-  cd "$FABRIC_PROJECT_DIR"
-
-  mkdir -p dev-mods run/mods
-
-  echo -e "${GREEN}[2/5] Downloading Mod Menu into dev-mods/, run/mods/, and Minecrak run/mods...${NC}"
-  curl -L -o dev-mods/modmenu.jar "https://cdn.modrinth.com/data/mOgUt4GM/versions/latest/download"
-  cp dev-mods/modmenu.jar run/mods/ || true
-  mkdir -p "$FABRIC_RUN_MODS_DIR"
-  cp dev-mods/modmenu.jar "$FABRIC_RUN_MODS_DIR" || true
-
-  if [ "$FABRIC_MODS_CHOICE" = "Yes" ] && [ -n "$FABRIC_EXTRA_MODS" ]; then
-    while IFS= read -r modpath; do
-      [ -z "$modpath" ] && continue
-      cp "$modpath" run/mods/ || true
-      cp "$modpath" "$FABRIC_RUN_MODS_DIR" || true
-    done <<< "$FABRIC_EXTRA_MODS"
-  fi
-
-  import_config_into "$FABRIC_RUN_CONFIG_DIR"
-
-  echo -e "${GREEN}[3/5] Running ./gradlew build (you will run the client yourself later)...${NC}"
-  ./gradlew build || true
-
-  if [ "$MAKE_COMMAND" = "Yes" ]; then
-    echo -e "${GREEN}[4/5] Creating runClient helper script for Fabric...${NC}"
-    RUN_CMD_PATH="$HOME/run_minecrak_fabric.sh"
-    cat > "$RUN_CMD_PATH" <<EOF
-#!/usr/bin/env bash
-cd "$FABRIC_PROJECT_DIR"
-./gradlew runClient
-EOF
-    chmod +x "$RUN_CMD_PATH"
-    echo "Created: $RUN_CMD_PATH"
-  fi
-
-  echo -e "${GREEN}[5/5] Creating Fabric uninstaller...${NC}"
-  create_fabric_uninstaller "$FABRIC_PROJECT_DIR"
-
-  CREATED_PROJECT_DIR=""
-  echo
-  echo -e "${GREEN}=== Fabric setup complete ===${NC}"
-  echo "Project:      $FABRIC_PROJECT_DIR"
-  echo "Uninstaller:  $FABRIC_PROJECT_DIR/uninstall-minecrak-fabric.command"
-}
-
-run_neoforge_setup() {
-  echo
-  echo -e "${GREEN}=== NeoForge dev setup (MDK clone) ===${NC}"
+main() {
+  echo -e "${GREEN}=== Minecrak NeoForge Dev Setup (ONLY NeoForge) ===${NC}"
 
   read -r -p "NeoForge Minecraft version (e.g. 1.21.1, 1.21.11) [$DEFAULT_NEO_VERSION]: " NEO_VERSION_CHOICE
   NEO_VERSION_CHOICE="${NEO_VERSION_CHOICE:-$DEFAULT_NEO_VERSION}"
   NEO_MDK_REPO="https://github.com/NeoForgeMDKs/MDK-${NEO_VERSION_CHOICE}-NeoGradle.git"
 
-  prompt_clone_dir_and_project_name "$DEFAULT_NEO_PROJECT_NAME" "NEOPROJECT_NAME"
+  prompt_clone_dir_and_project_name "$DEFAULT_NEO_PROJECT_NAME"
   prompt_extra_mods_list
-  NEO_MODS_CHOICE="$MODS_CHOICE"
-  NEO_EXTRA_MODS="$EXTRA_MODS"
   prompt_import_config
-  prompt_make_command
-  prompt_entertainment_choice
 
   echo
   echo -e "${GREEN}=== Summary (NeoForge) ===${NC}"
@@ -332,7 +149,6 @@ run_neoforge_setup() {
   [ "$NEO_MODS_CHOICE" = "Yes" ] && printf "Extra mods list:\n%s" "$NEO_EXTRA_MODS"
   echo "Import config:      $IMPORT_CONFIG_CHOICE"
   [ "$IMPORT_CONFIG_CHOICE" = "Yes" ] && echo "Config source:      $IMPORT_CONFIG_PATH"
-  echo "Make helper:        $MAKE_COMMAND"
   echo "========================"
 
   if [ -d "$NEO_PROJECT_DIR" ]; then
@@ -341,18 +157,20 @@ run_neoforge_setup() {
     exit 1
   fi
 
-  if [ "$OPEN_FUN" = "Yes" ]; then
-    open "$ENTERTAINMENT_URL" >/dev/null 2>&1 &
+  echo
+  echo "Open something entertaining in your browser while it downloads? (y/N)"
+  read -r open_fun
+  if [ "$open_fun" = "y" ] || [ "$open_fun" = "Y" ]; then
+    open "$ENTERTAINMENT_URL" >/dev/null 2>&1 || true
   fi
 
   echo
-  echo -e "${GREEN}[1/5] Cloning NeoForge MDK into '$NEO_PROJECT_DIR'...${NC}"
-  CREATED_PROJECT_DIR="$NEO_PROJECT_DIR"
+  echo -e "${GREEN}[1/4] Cloning NeoForge MDK into '$NEO_PROJECT_DIR'...${NC}"
   git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR"
   cd "$NEO_PROJECT_DIR"
 
   if grep -q "neoForge {" build.gradle; then
-    echo -e "${GREEN}[DEBUG] Patching NeoForge run configuration for external mods...${NC}"
+    echo -e "${GREEN}[2/4] Patching build.gradle gameDirectory to 'runs/client'...${NC}"
     sed -i.bak '
       /neoForge\s*{/,/}/ {
         /runs\s*{/,/}/ {
@@ -372,50 +190,38 @@ run_neoforge_setup() {
 
   if [ "$NEO_MODS_CHOICE" = "Yes" ] && [ -n "$NEO_EXTRA_MODS" ]; then
     echo
-    echo -e "${GREEN}[2/5] Copying NeoForge extra mods into $NEO_RUN_DIR/mods ...${NC}"
+    echo -e "${GREEN}[3/4] Copying NeoForge extra mods into $NEO_RUN_DIR/mods ...${NC}"
     while IFS= read -r modpath; do
       [ -z "$modpath" ] && continue
+      echo "Copying: $modpath"
       cp "$modpath" "$NEO_RUN_DIR/mods/" || true
     done <<< "$NEO_EXTRA_MODS"
   fi
 
   import_config_into "$NEO_CONFIG_DIR"
 
-  echo -e "${GREEN}[3/5] Running ./gradlew build (you will run the client yourself later)...${NC}"
-  ./gradlew build || true
-
-  if [ "$MAKE_COMMAND" = "Yes" ]; then
-    echo
-    echo -e "${GREEN}[4/5] Creating run-neoforge-client.command helper...${NC}"
-    RUN_CMD_PATH="$NEO_PROJECT_DIR/run-neoforge-client.command"
-    cat > "$RUN_CMD_PATH" <<EOF
+  echo
+  echo -e "${GREEN}[3.5/4] Creating run-neoforge.command helper in the project root...${NC}"
+  RUN_CMD_PATH="$NEO_PROJECT_DIR/run-neoforge.command"
+  cat > "$RUN_CMD_PATH" <<EOF
 #!/usr/bin/env bash
 cd "\$(dirname "\$0")"
 ./gradlew runClient
 EOF
-    chmod +x "$RUN_CMD_PATH"
-    echo "Created: $RUN_CMD_PATH"
-  fi
+  chmod +x "$RUN_CMD_PATH"
+  echo "Created: $RUN_CMD_PATH"
 
-  echo -e "${GREEN}[5/5] Creating NeoForge uninstaller...${NC}"
+  echo
+  echo -e "${GREEN}[4/4] Creating NeoForge uninstaller...${NC}"
   create_neo_uninstaller "$NEO_PROJECT_DIR"
 
-  CREATED_PROJECT_DIR=""
   echo
-  echo -e "${GREEN}NeoForge setup complete at: $NEO_PROJECT_DIR${NC}"
+  echo -e "${GREEN}=== NeoForge setup complete ===${NC}"
   echo "Project:      $NEO_PROJECT_DIR"
   echo "Mods go in:   $NEO_PROJECT_DIR/runs/client/mods"
-  echo "Uninstaller:  $NEO_PROJECT_DIR/uninstall-minecrak-neo.command"
+  echo "Config goes:  $NEO_PROJECT_DIR/runs/client/config"
+  echo "To run:       double-click $NEO_PROJECT_DIR/run-neoforge.command"
+  echo "To uninstall: double-click $NEO_PROJECT_DIR/uninstall-minecrak-neo.command"
 }
 
-main_once() {
-  prompt_loader_choice
-
-  if [ "$LOADER" = "Fabric" ]; then
-    run_fabric_setup
-  else
-    run_neoforge_setup
-  fi
-}
-
-main_once
+main
