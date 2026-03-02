@@ -6,12 +6,18 @@ DEFAULT_PROJECT_NAME="Minecrak Neo"
 DEFAULT_NEO_VERSION="1.21.11"
 DEFAULT_MDK_REPO="https://github.com/NeoForgeMDKs/MDK-1.21.11-NeoGradle.git"
 
+# Change this to whatever you want to open while it downloads
+ENTERTAINMENT_URL="https://www.youtube.com"
+
+GREEN="\033[0;32m"
+NC="\033[0m"
+
 CREATED_PROJECT_DIR=""
 
 cleanup() {
   if [ -n "${CREATED_PROJECT_DIR:-}" ] && [ -d "$CREATED_PROJECT_DIR" ]; then
     echo
-    echo "[CLEANUP] Removing incomplete project directory:"
+    echo -e "${GREEN}[CLEANUP] Removing incomplete project directory:${NC}"
     echo "  $CREATED_PROJECT_DIR"
     rm -rf "$CREATED_PROJECT_DIR"
   fi
@@ -19,7 +25,7 @@ cleanup() {
 trap cleanup EXIT
 
 prompt_project_settings() {
-  echo "=== Minecrak Dev Setup ==="
+  echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
   echo
 
   read -r -p "Project name [$DEFAULT_PROJECT_NAME]: " NEOPROJECT_NAME
@@ -63,4 +69,144 @@ prompt_project_settings() {
   select opt in "No" "Yes"; do
     case "$opt" in
       "No")  NEO_MODS_CHOICE="No";  NEO_MODS_FOLDER=""; break ;;
-      "Yes
+      "Yes") NEO_MODS_CHOICE="Yes"; break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+
+  if [ "$NEO_MODS_CHOICE" = "Yes" ]; then
+    while true; do
+      read -r -p "Path to mods folder (jars): " NEO_MODS_FOLDER
+      if [ -d "$NEO_MODS_FOLDER" ]; then
+        break
+      else
+        echo "Folder '$NEO_MODS_FOLDER' does not exist. Try again."
+      fi
+    done
+  fi
+
+  echo
+  echo "Create a 'runClient' helper script in your home folder?"
+  select opt in "Yes" "No"; do
+    case "$opt" in
+      "Yes") MAKE_COMMAND="Yes"; break ;;
+      "No")  MAKE_COMMAND="No";  break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+
+  echo
+  echo "Run the dev client after setup?"
+  select opt in "Yes" "No"; do
+    case "$opt" in
+      "Yes") RUN_CLIENT_NOW="Yes"; break ;;
+      "No")  RUN_CLIENT_NOW="No";  break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+
+  echo
+  echo "Open something entertaining in your browser while it downloads?"
+  echo "Current URL: $ENTERTAINMENT_URL"
+  select opt in "Yes" "No"; do
+    case "$opt" in
+      "Yes") OPEN_FUN="Yes"; break ;;
+      "No")  OPEN_FUN="No";  break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
+}
+
+main() {
+  prompt_project_settings
+
+  echo
+  echo -e "${GREEN}=== Summary ===${NC}"
+  echo "Loader:            NeoForge"
+  echo "Minecraft version: $DEFAULT_NEO_VERSION"
+  echo "MDK repo:          $DEFAULT_MDK_REPO"
+  echo "Project name:      $NEOPROJECT_NAME"
+  echo "Clone directory:   $NEO_CLONE_DIR"
+  echo "Full project path: $NEO_PROJECT_DIR"
+  echo "Extra mods:        $NEO_MODS_CHOICE"
+  [ "$NEO_MODS_CHOICE" = "Yes" ] && echo "Mods folder:       $NEO_MODS_FOLDER"
+  echo "Make command:      $MAKE_COMMAND"
+  echo "Run client now:    $RUN_CLIENT_NOW"
+  echo "Open fun stuff:    $OPEN_FUN"
+  echo "Fun URL:           $ENTERTAINMENT_URL"
+  echo "================="
+
+  if [ -d "$NEO_PROJECT_DIR" ]; then
+    echo
+    echo -e "${GREEN}Directory '$NEO_PROJECT_DIR' already exists, aborting to avoid overwrite.${NC}"
+    exit 1
+  fi
+
+  CREATED_PROJECT_DIR="$NEO_PROJECT_DIR"
+
+  if [ "$OPEN_FUN" = "Yes" ]; then
+    echo
+    echo -e "${GREEN}[INFO] Opening something fun in your browser while we download...${NC}"
+    open "$ENTERTAINMENT_URL" >/dev/null 2>&1 &
+  fi
+
+  echo
+  echo -e "${GREEN}[STEP 1/4] Cloning MDK...${NC}"
+  git clone "$DEFAULT_MDK_REPO" "$NEO_PROJECT_DIR"
+
+  cd "$NEO_PROJECT_DIR"
+
+  if [ "$NEO_MODS_CHOICE" = "Yes" ]; then
+    echo
+    echo -e "${GREEN}[STEP 2/4] Copying mods from '$NEO_MODS_FOLDER'...${NC}"
+    mkdir -p run/mods
+    cp "$NEO_MODS_FOLDER"/*.jar run/mods/ || true
+  else
+    echo
+    echo -e "${GREEN}[STEP 2/4] Skipping extra mods...${NC}"
+  fi
+
+  if [ "$MAKE_COMMAND" = "Yes" ]; then
+    echo
+    echo -e "${GREEN}[STEP 3/4] Creating runClient helper script...${NC}"
+    RUN_CMD_PATH="$HOME/run_minecrak_neo.sh"
+    cat > "$RUN_CMD_PATH" <<EOF
+#!/usr/bin/env bash
+cd "$NEO_PROJECT_DIR"
+./gradlew runClient
+EOF
+    chmod +x "$RUN_CMD_PATH"
+    echo "Created: $RUN_CMD_PATH"
+  else
+    echo
+    echo -e "${GREEN}[STEP 3/4] Skipping runClient helper script...${NC}"
+  fi
+
+  echo
+  echo -e "${GREEN}[STEP 4/4] Running initial Gradle tasks (gradlew --version)...${NC}"
+  ./gradlew --version >/dev/null 2>&1 || true
+
+  if [ "$RUN_CLIENT_NOW" = "Yes" ]; then
+    echo
+    echo -e "${GREEN}[EXTRA] Running dev client (this may take a while)...${NC}"
+    ./gradlew runClient || true
+  fi
+
+  CREATED_PROJECT_DIR=""
+
+  echo
+  echo -e "${GREEN}=== Setup complete ===${NC}"
+  echo "Project created at: $NEO_PROJECT_DIR"
+}
+
+while true; do
+  main
+
+  echo
+  echo "Press Enter to run the setup again, or type anything then Enter to quit."
+  read -r retry
+  if [ -n "$retry" ]; then
+    echo "Exiting."
+    break
+  fi
+done
