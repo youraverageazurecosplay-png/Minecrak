@@ -5,7 +5,6 @@ GREEN="\033[0;32m"
 NC="\033[0m"
 DEFAULT_CLONE_DIR="$HOME"
 
-# ----- MENU -----
 prompt_loader_choice() {
   echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
   echo
@@ -20,7 +19,6 @@ prompt_loader_choice() {
   done
 }
 
-# ----- FABRIC PATH (its own variables, its own run/) -----
 run_fabric_setup() {
   local DEFAULT_FABRIC_PROJECT_NAME="Minecrak Fabric"
   local DEFAULT_FABRIC_VERSION="1.21.1"
@@ -43,13 +41,9 @@ run_fabric_setup() {
   echo -e "${GREEN}[F-1/3] Cloning Fabric example mod to '$FABRIC_PROJECT_DIR'...${NC}"
   git clone "$FABRIC_EXAMPLE_REPO" "$FABRIC_PROJECT_DIR"
   cd "$FABRIC_PROJECT_DIR"
-
-  # Fabric uses "run" directory (standard)
   mkdir -p run/mods run/config
-
-  echo -e "${GREEN}[F-2/3] Running ./gradlew build (you can runClient later)...${NC}"
+  echo -e "${GREEN}[F-2/3] Running ./gradlew build...${NC}"
   ./gradlew build || true
-
   echo -e "${GREEN}[F-3/3] Creating uninstall-fabric.command...${NC}"
   cat > uninstall-fabric.command <<EOF
 #!/usr/bin/env bash
@@ -64,14 +58,12 @@ else
 fi
 EOF
   chmod +x uninstall-fabric.command
-
   echo
   echo -e "${GREEN}=== Fabric setup complete ===${NC}"
   echo "Project: $FABRIC_PROJECT_DIR"
   echo "Run client: cd \"$FABRIC_PROJECT_DIR\" && ./gradlew runClient"
 }
 
-# ----- NEOFORGE PATH (own vars, only runs/client/) -----
 run_neoforge_setup() {
   local DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
   local DEFAULT_NEO_VERSION="1.21.1"
@@ -95,28 +87,20 @@ run_neoforge_setup() {
   git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR"
   cd "$NEO_PROJECT_DIR"
 
-  echo -e "${GREEN}[N-2/4] Forcing gameDirectory to 'runs/client' in build.gradle...${NC}"
-  # Fixed sed: Simple insert after neoForge block start, macOS-compatible
   sed -i.bak '/neoForge {/,/}/ {
     /runs {/,/}/ {
       /client {/,/}/ {
         /gameDirectory/ d
-      }
-      /client {/ a\
-        gameDirectory = project.file("runs/client")
+        /client {/a\
+          gameDirectory = project.file("runs/client")
       }
     }
   }' build.gradle
 
-  # Verify patch worked (check for gameDirectory line)
-  if ! grep -q 'gameDirectory = project.file("runs/client")' build.gradle; then
-    echo "WARNING: Patch may have failed. Check build.gradle manually." >&2
-  fi
-
   local NEO_RUN_DIR="runs/client"
   mkdir -p "$NEO_RUN_DIR/mods" "$NEO_RUN_DIR/config"
 
-  echo -e "${GREEN}[N-3/4] Creating start-neoforge.command...${NC}"
+  echo -e "${GREEN}[N-2/4] Creating start-neoforge.command...${NC}"
   cat > start-neoforge.command <<EOF
 #!/usr/bin/env bash
 cd "\$(dirname "\$0")"
@@ -124,7 +108,7 @@ cd "\$(dirname "\$0")"
 EOF
   chmod +x start-neoforge.command
 
-  echo -e "${GREEN}[N-4/4] Creating uninstall-neoforge.command...${NC}"
+  echo -e "${GREEN}[N-3/4] Creating uninstall-neoforge.command...${NC}"
   cat > uninstall-neoforge.command <<EOF
 #!/usr/bin/env bash
 echo "This will delete the NeoForge project at:"
@@ -139,11 +123,6 @@ fi
 EOF
   chmod +x uninstall-neoforge.command
 
-  # Final check: Ensure no accidental 'run/' dir
-  if [ -d "run" ]; then
-    echo "WARNING: 'run/' folder detected in NeoForge project—Gradle may still create it on first runClient. Delete if unused." >&2
-  fi
-
   echo
   echo -e "${GREEN}=== NeoForge setup complete ===${NC}"
   echo "Project: $NEO_PROJECT_DIR"
@@ -152,7 +131,6 @@ EOF
   echo "Run client: double-click start-neoforge.command"
 }
 
-# ----- MAIN -----
 main() {
   prompt_loader_choice
   case "$LOADER" in
