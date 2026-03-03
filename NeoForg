@@ -30,7 +30,7 @@ run_neoforge_setup() {
   NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEO_PROJECT_NAME"
 
   echo
-  echo -e "${GREEN}[N-1/5] Cloning NeoForge MDK to '$NEO_PROJECT_DIR'...${NC}"
+  echo -e "${GREEN}[N-1/6] Cloning NeoForge MDK to '$NEO_PROJECT_DIR'...${NC}"
   git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR" || {
     echo "Clone failed."
     return
@@ -41,34 +41,30 @@ run_neoforge_setup() {
     return
   }
 
-  echo -e "${GREEN}[N-2/5] Forcing gameDirectory to 'runs/client'...${NC}"
+  echo -e "${GREEN}[N-2/6] Forcing gameDirectory to 'runs/client'...${NC}"
 
-  sed -i.bak '/neoForge {/,/}/ {
-    /runs {/,/}/ {
-      /client {/,/}/ {
-        /gameDirectory/d
-      }
-      /client {/ a\
+  # Remove existing gameDirectory lines
+  sed -i '' '/gameDirectory *=/d' build.gradle
+
+  # Insert gameDirectory inside client block
+  sed -i '' '/client {/a\
         gameDirectory = project.file("runs/client")
-      }
-    }
-  }' build.gradle
+' build.gradle
 
   mkdir -p runs/client/mods
   mkdir -p runs/client/config
 
-  echo -e "${GREEN}[N-3/5] Select NeoForge mods now? (y/N)${NC}"
+  echo -e "${GREEN}[N-3/6] Select NeoForge mods now? (y/N)${NC}"
   read -r SELECT_MODS || true
 
   if [[ "$SELECT_MODS" == "y" || "$SELECT_MODS" == "Y" ]]; then
-    echo "Place .jar files into:"
-    echo "$NEO_PROJECT_DIR/mods"
     mkdir -p "$NEO_PROJECT_DIR/mods"
+    echo "Opening $NEO_PROJECT_DIR/mods"
     open "$NEO_PROJECT_DIR/mods"
-    read -r -p "Press ENTER when done..." _
+    read -r -p "Press ENTER when done adding mods..." _
   fi
 
-  echo -e "${GREEN}[N-4/5] Creating start-neoforge.command...${NC}"
+  echo -e "${GREEN}[N-4/6] Creating start-neoforge.command...${NC}"
 
   cat > start-neoforge.command <<EOF
 #!/usr/bin/env bash
@@ -98,7 +94,7 @@ EOF
 
   chmod +x start-neoforge.command
 
-  echo -e "${GREEN}[N-5/5] Creating uninstall-neoforge.command...${NC}"
+  echo -e "${GREEN}[N-5/6] Creating uninstall-neoforge.command...${NC}"
 
   cat > uninstall-neoforge.command <<EOF
 #!/usr/bin/env bash
@@ -115,12 +111,19 @@ EOF
 
   chmod +x uninstall-neoforge.command
 
+  echo -e "${GREEN}[N-6/6] Run client now? (y/N)${NC}"
+  read -r RUN_NOW || true
+
+  if [[ "$RUN_NOW" == "y" || "$RUN_NOW" == "Y" ]]; then
+    ./gradlew runClient
+  fi
+
   echo
   echo -e "${GREEN}=== NeoForge setup complete ===${NC}"
   echo "Project: $NEO_PROJECT_DIR"
   echo "Mods:    $NEO_PROJECT_DIR/runs/client/mods"
   echo "Config:  $NEO_PROJECT_DIR/runs/client/config"
-  echo "Run:     double-click start-neoforge.command"
+  echo "Run later: double-click start-neoforge.command"
 }
 
 run_neoforge_setup
