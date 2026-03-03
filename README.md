@@ -36,12 +36,22 @@ Each instance is created as:
 
 ## Usage
 
-Recommended first run:
+Recommended one-line install/bootstrap:
+
+```bash
+/bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/main/Minecrak.command)"
+```
+
+This bootstrap command clones/updates the repo into `~/Minecrak`, runs the interactive installer, then optionally launches the app.
+
+Manual first run:
 
 ```bash
 cd /Users/ps/Minecrak
 ./install.command
 ```
+
+`install.command` now asks whether you want it to install dependencies (`git`, `python`, `openjdk`) or skip package installation.
 
 Then launch:
 
