@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-clear
+print_centered() {
+  local text="$1"
+  local width=$(tput cols)
+  printf "%*s\n" $(((${#text} + width) / 2)) "$text"
+}
 
+clear
 echo -e "${GREEN}"
-echo "███╗   ███╗██╗███╗   ██╗███████╗ ██████╗██████╗  █████╗ ██╗  ██╗"
-echo "████╗ ████║██║████╗  ██║██╔════╝██╔════╝██╔══██╗██╔══██╗██║ ██╔╝"
-echo "██╔████╔██║██║██╔██╗ ██║█████╗  ██║     ██████╔╝███████║█████╔╝ "
-echo "██║╚██╔╝██║██║██║╚██╗██║██╔══╝  ██║     ██╔══██╗██╔══██║██╔═██╗ "
-echo "██║ ╚═╝ ██║██║██║ ╚████║███████╗╚██████╗██║  ██║██║  ██║██║  ██╗"
-echo "╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝"
+print_centered "███╗   ███╗██╗███╗   ██╗███████╗ ██████╗██████╗  █████╗ ██╗  ██╗"
+print_centered "████╗ ████║██║████╗  ██║██╔════╝██╔════╝██╔══██╗██╔══██╗██║ ██╔╝"
+print_centered "██╔████╔██║██║██╔██╗ ██║█████╗  ██║     ██████╔╝███████║█████╔╝ "
+print_centered "██║╚██╔╝██║██║██║╚██╗██║██╔══╝  ██║     ██╔══██╗██╔══██║██╔═██╗ "
+print_centered "██║ ╚═╝ ██║██║██║ ╚████║███████╗╚██████╗██║  ██║██║  ██║██║  ██╗"
+print_centered "╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝"
 echo
-echo "             Gradle Mod Development Launcher"
-echo "                   Version $VERSION"
+print_centered "Gradle Mod Development Launcher"
+print_centered "Version $VERSION"
 echo -e "${NC}"
 echo
 
