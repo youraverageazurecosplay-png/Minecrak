@@ -18,22 +18,28 @@ if [ -d "$INSTALL_DIR" ]; then
   rm -rf "$INSTALL_DIR"
 fi
 
+echo
+echo "Creating Minecrak directory..."
 mkdir -p "$INSTALL_DIR"
 
-echo "Downloading Minecrak..."
+echo "Downloading Minecrak Control Panel..."
 curl -fsSL https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/main/Minecrak.command \
   -o "$INSTALL_DIR/Minecrak.command"
 
 chmod +x "$INSTALL_DIR/Minecrak.command"
 
-read -rp "Create Desktop shortcut? (y/n): " shortcut
-if [[ "$shortcut" == "y" && -d "$HOME/Desktop" ]]; then
-  ln -sf "$INSTALL_DIR/Minecrak.command" "$HOME/Desktop/Minecrak.command"
-fi
+echo
+echo "Creating Desktop Minecrak folder..."
+
+DESKTOP_FOLDER="$HOME/Desktop/Minecrak"
+mkdir -p "$DESKTOP_FOLDER"
+
+ln -sf "$INSTALL_DIR/Minecrak.command" \
+       "$DESKTOP_FOLDER/Minecrak Control Panel.command"
 
 echo
-echo "✅ Installed successfully!"
-echo "Location: $INSTALL_DIR"
+echo "✅ Minecrak installed successfully!"
 echo
-echo "Run with:"
-echo "$INSTALL_DIR/Minecrak.command"
+echo "Open from:"
+echo "$DESKTOP_FOLDER/Minecrak Control Panel.command"
+echo
