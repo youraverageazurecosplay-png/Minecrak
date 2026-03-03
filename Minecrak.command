@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
+# =========================
+# PORTABLE DIRECTORIES
+# =========================
+
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 CORE_DIR="$BASE_DIR/core"
 INSTANCES_DIR="$BASE_DIR/instances"
@@ -24,14 +28,16 @@ pause() { read -r -p "Press ENTER to continue..." _; }
 # =========================
 
 install_homebrew() {
-  echo "Installing Homebrew..."
+  echo -e "${YELLOW}Installing Homebrew...${NC}"
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 }
 
 install_dependencies() {
-  echo "Checking dependencies..."
+  echo
+  echo "=== Dependency Check ==="
   echo
 
+  # Git
   if ! command -v git &>/dev/null; then
     echo "Installing git..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -44,6 +50,7 @@ install_dependencies() {
     echo "git OK"
   fi
 
+  # Curl
   if ! command -v curl &>/dev/null; then
     echo "Installing curl..."
     if command -v apt &>/dev/null; then
@@ -53,6 +60,7 @@ install_dependencies() {
     echo "curl OK"
   fi
 
+  # Java
   if ! command -v java &>/dev/null; then
     echo "Installing OpenJDK 21..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -70,11 +78,12 @@ install_dependencies() {
 }
 
 # =========================
-# LOADERS
+# LOADER SELECTION
 # =========================
 
 select_loader() {
   echo
+  echo "Select Loader:"
   echo "1) Fabric"
   echo "2) Quilt"
   echo "3) Forge"
@@ -98,8 +107,13 @@ instance_run_path() {
   fi
 }
 
+# =========================
+# INSTANCE SETUP
+# =========================
+
 create_symlinks() {
   mkdir -p "$INSTANCE_DIR/$RUN_PATH/mods"
+
   rm -rf "$INSTANCE_DIR/$RUN_PATH/saves"
   rm -rf "$INSTANCE_DIR/$RUN_PATH/config"
 
@@ -114,22 +128,25 @@ cd "$INSTANCE_DIR"
 USERNAME=\$(cat .username)
 ./gradlew runClient --args="--username \$USERNAME"
 EOF
+
   chmod +x "$INSTANCE_DIR/start.command"
 }
-
-# =========================
-# INSTANCE MGMT
-# =========================
 
 create_instance() {
   select_loader || return
   instance_run_path
 
+  echo
   read -rp "Instance name: " NAME
   INSTANCE_DIR="$INSTANCES_DIR/$NAME"
 
-  [ -d "$INSTANCE_DIR" ] && echo "Exists." && return
+  if [ -d "$INSTANCE_DIR" ]; then
+    echo -e "${RED}Instance already exists.${NC}"
+    pause
+    return
+  fi
 
+  echo "Cloning template..."
   git clone "$REPO" "$INSTANCE_DIR" || return
 
   read -rp "Username [Dev]: " USERNAME
@@ -139,63 +156,106 @@ create_instance() {
   create_symlinks
   create_launcher
 
-  echo "Created."
+  echo -e "${GREEN}Instance created successfully.${NC}"
   pause
 }
 
+# =========================
+# INSTANCE MANAGEMENT
+# =========================
+
 list_instances() {
   echo
+  echo "Instances:"
   ls "$INSTANCES_DIR"
   pause
 }
 
 launch_instance() {
-  list_instances
+  echo
+  ls "$INSTANCES_DIR"
+  echo
   read -rp "Instance to launch: " NAME
   TARGET="$INSTANCES_DIR/$NAME/start.command"
-  [ -f "$TARGET" ] && "$TARGET"
+
+  if [ -f "$TARGET" ]; then
+    "$TARGET"
+  else
+    echo "Instance not found."
+  fi
+
   pause
 }
 
 delete_instance() {
-  list_instances
+  echo
+  ls "$INSTANCES_DIR"
+  echo
   read -rp "Instance to delete: " NAME
-  rm -rf "$INSTANCES_DIR/$NAME"
+
+  if [ -d "$INSTANCES_DIR/$NAME" ]; then
+    rm -rf "$INSTANCES_DIR/$NAME"
+    echo "Deleted."
+  else
+    echo "Not found."
+  fi
+
   pause
 }
 
 delete_all_instances() {
+  echo
   read -rp "Type DELETE to confirm: " confirm
-  [ "$confirm" = "DELETE" ] && rm -rf "$INSTANCES_DIR" && mkdir -p "$INSTANCES_DIR"
+  if [ "$confirm" = "DELETE" ]; then
+    rm -rf "$INSTANCES_DIR"
+    mkdir -p "$INSTANCES_DIR"
+    echo "All instances removed."
+  fi
   pause
 }
 
 import_config() {
   select_loader || return
   TARGET="$CORE_DIR/config/$LOADER"
+  echo
+  echo "Place config files in:"
+  echo "$TARGET"
   open "$TARGET" 2>/dev/null || true
   pause
 }
 
+# =========================
+# FULL UNINSTALL
+# =========================
+
 full_uninstall() {
   echo
-  echo "⚠ FULL UNINSTALL"
-  echo "Deletes: $BASE_DIR"
+  echo -e "${RED}⚠ FULL UNINSTALL${NC}"
+  echo "This will permanently delete:"
+  echo "$BASE_DIR"
+  echo
   read -rp "Type DELETE to confirm: " confirm
-  [ "$confirm" != "DELETE" ] && return
 
-  rm -f "$HOME/Desktop/Minecrak.command" 2>/dev/null || true
+  if [ "$confirm" != "DELETE" ]; then
+    echo "Cancelled."
+    pause
+    return
+  fi
+
+  rm -f "$HOME/Desktop/Minecrak/Minecrak Control Panel.command" 2>/dev/null || true
+  rm -rf "$HOME/Desktop/Minecrak" 2>/dev/null || true
   rm -rf "$BASE_DIR"
+
   exit 0
 }
 
 # =========================
-# MENU
+# MAIN MENU
 # =========================
 
 while true; do
   clear
-  echo -e "${GREEN}=== Minecrak Master ===${NC}"
+  echo -e "${GREEN}=== Minecrak Control Panel ===${NC}"
   echo
   echo "1) Install / Check Dependencies"
   echo "2) Create Instance"
