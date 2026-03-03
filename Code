@@ -3,68 +3,51 @@ set -euo pipefail
 
 GREEN="\033[0;32m"
 NC="\033[0m"
-DEFAULT_CLONE_DIR="$HOME"
 
-run_neoforge_setup() {
-  local DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
-  local DEFAULT_NEO_VERSION="1.21.1"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+FABRIC_LOCAL="$SCRIPT_DIR/Fabrik"
+NEO_LOCAL="$SCRIPT_DIR/NeoForg"
 
-  echo -e "${GREEN}=== NeoForge Dev Setup ===${NC}"
-  read -r -p "NeoForge Minecraft version [$DEFAULT_NEO_VERSION]: " NEO_VERSION_CHOICE
-  NEO_VERSION_CHOICE="${NEO_VERSION_CHOICE:-$DEFAULT_NEO_VERSION}"
-  local NEO_MDK_REPO="https://github.com/NeoForgeMDKs/MDK-${NEO_VERSION_CHOICE}-NeoGradle.git"
+FABRIC_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/Fabrik"
+NEO_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/NeoForg"
+
+prompt_loader_choice() {
+  echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
   echo
-  read -r -p "NeoForge project name [$DEFAULT_NEO_PROJECT_NAME]: " NEO_PROJECT_NAME
-  NEO_PROJECT_NAME="${NEO_PROJECT_NAME:-$DEFAULT_NEO_PROJECT_NAME}"
-  echo
-  echo "NeoForge project base directory (default: $DEFAULT_CLONE_DIR)"
-  read -r -p "Path (ENTER for default): " NEO_CLONE_DIR
-  NEO_CLONE_DIR="${NEO_CLONE_DIR:-$DEFAULT_CLONE_DIR}"
-  NEO_CLONE_DIR="${NEO_CLONE_DIR%/}"
-  NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEO_PROJECT_NAME"
-
-  echo
-  echo -e "${GREEN}[N-1/4] Cloning NeoForge MDK to '$NEO_PROJECT_DIR'...${NC}"
-  git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR"
-  cd "$NEO_PROJECT_DIR"
-
-  echo -e "${GREEN}[N-2/4] Forcing gameDirectory to 'runs/client'...${NC}"
-  if grep -q "neoForge {" build.gradle; then
-    sed -i.bak ' /neoForge\s*{/,/}/ { /runs\s*{/,/}/ { /client\s*{/,/}/ { /gameDirectory/d /client\s*{/a\ \ \ \ \ \ \ \ \ gameDirectory = project.file("runs/client") } } } ' build.gradle
-  fi
-
-  local NEO_RUN_DIR="runs/client"
-  mkdir -p "$NEO_RUN_DIR/mods" "$NEO_RUN_DIR/config"
-
-  echo -e "${GREEN}[N-3/4] Creating start-neoforge.command...${NC}"
-  cat > start-neoforge.command <<EOF
-#!/usr/bin/env bash
-cd "\$(dirname "\$0")"
-./gradlew runClient
-EOF
-  chmod +x start-neoforge.command
-
-  echo -e "${GREEN}[N-4/4] Creating uninstall-neoforge.command...${NC}"
-  cat > uninstall-neoforge.command <<EOF
-#!/usr/bin/env bash
-echo "This will delete the NeoForge project at:"
-echo " $NEO_PROJECT_DIR"
-read -r -p "Type 'DELETE' to confirm: " ans
-if [ "\$ans" = "DELETE" ]; then
-  rm -rf "$NEO_PROJECT_DIR"
-  echo "Deleted."
-else
-  echo "Cancelled."
-fi
-EOF
-  chmod +x uninstall-neoforge.command
-
-  echo
-  echo -e "${GREEN}=== NeoForge setup complete ===${NC}"
-  echo "Project: $NEO_PROJECT_DIR"
-  echo "Mods: $NEO_PROJECT_DIR/runs/client/mods"
-  echo "Config: $NEO_PROJECT_DIR/runs/client/config"
-  echo "Run client: double-click start-neoforge.command"
+  echo "Which loader do you want to set up?"
+  select opt in "Fabric" "NeoForge" "Quit"; do
+    case "$opt" in
+      "Fabric") LOADER="Fabric"; break ;;
+      "NeoForge") LOADER="NeoForge"; break ;;
+      "Quit") LOADER="Quit"; break ;;
+      *) echo "Invalid choice."; ;;
+    esac
+  done
 }
 
-run_neoforge_setup
+ensure_local_copy() {
+  url="$1"
+  local_path="$2"
+  curl -fsSL "$url" -o "$local_path"
+  chmod +x "$local_path"
+}
+
+main() {
+  prompt_loader_choice
+  case "$LOADER" in
+    "Fabric")
+      ensure_local_copy "$FABRIC_URL" "$FABRIC_LOCAL"
+      "$FABRIC_LOCAL"
+      ;;
+    "NeoForge")
+      ensure_local_copy "$NEO_URL" "$NEO_LOCAL"
+      "$NEO_LOCAL"
+      ;;
+    "Quit")
+      echo "Bye."
+      exit 0
+      ;;
+  esac
+}
+
+main
