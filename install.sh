@@ -10,30 +10,30 @@ INSTALL_BASE="${INSTALL_BASE:-$HOME}"
 INSTALL_DIR="$INSTALL_BASE/Minecrak"
 
 if [ -d "$INSTALL_DIR" ]; then
-  echo "Minecrak already installed at:"
-  echo "$INSTALL_DIR"
-  exit 1
+  echo
+  read -rp "Minecrak already exists. Reinstall? (y/n): " ans
+  if [[ "$ans" != "y" ]]; then
+    exit 1
+  fi
+  rm -rf "$INSTALL_DIR"
 fi
 
-echo
-echo "Creating directory..."
 mkdir -p "$INSTALL_DIR"
 
-echo "Downloading Minecrak Manager..."
+echo "Downloading Minecrak..."
 curl -fsSL https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/main/Minecrak.command \
   -o "$INSTALL_DIR/Minecrak.command"
 
 chmod +x "$INSTALL_DIR/Minecrak.command"
 
-echo
 read -rp "Create Desktop shortcut? (y/n): " shortcut
 if [[ "$shortcut" == "y" && -d "$HOME/Desktop" ]]; then
-  ln -s "$INSTALL_DIR/Minecrak.command" "$HOME/Desktop/Minecrak.command"
+  ln -sf "$INSTALL_DIR/Minecrak.command" "$HOME/Desktop/Minecrak.command"
 fi
 
 echo
-echo "✅ Minecrak installed!"
+echo "✅ Installed successfully!"
 echo "Location: $INSTALL_DIR"
 echo
-echo "Run it with:"
+echo "Run with:"
 echo "$INSTALL_DIR/Minecrak.command"
