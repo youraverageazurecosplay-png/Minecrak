@@ -5,6 +5,34 @@ GREEN="\033[0;32m"
 NC="\033[0m"
 DEFAULT_CLONE_DIR="$HOME"
 
+choose_mods_gui() {
+  dest="$1"
+  mkdir -p "$dest"
+
+  applescript='
+    tell application "System Events"
+      activate
+      try
+        set theFiles to choose file with prompt "Choose NeoForge mod files (Command/Shift for multiple):" of type {"jar"} with multiple selections allowed
+      on error
+        return ""
+      end try
+      set thePOSIX to {}
+      repeat with f in theFiles
+        copy POSIX path of f to the end of thePOSIX
+      end repeat
+      return thePOSIX as string
+    end tell
+  '
+  selected="$(osascript -e "$applescript")"
+  [ -z "$selected" ] && return
+
+  IFS=", " read -r -a files <<< "$selected"
+  for f in "${files[@]}"; do
+    [ -f "$f" ] && cp "$f" "$dest/"
+  done
+}
+
 run_neoforge_setup() {
   local DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
   local DEFAULT_NEO_VERSION="1.21.1"
@@ -17,7 +45,6 @@ run_neoforge_setup() {
   read -r -p "NeoForge project name [$DEFAULT_NEO_PROJECT_NAME]: " NEO_PROJECT_NAME
   NEO_PROJECT_NAME="${NEO_PROJECT_NAME:-$DEFAULT_NEO_PROJECT_NAME}"
   echo
-
   echo "NeoForge project base directory (default: $DEFAULT_CLONE_DIR)"
   read -r -p "Path (ENTER for default): " NEO_CLONE_DIR
   NEO_CLONE_DIR="${NEO_CLONE_DIR:-$DEFAULT_CLONE_DIR}"
@@ -65,7 +92,10 @@ run_neoforge_setup() {
   local NEO_RUN_DIR="runs/client"
   mkdir -p "$NEO_RUN_DIR/mods" "$NEO_RUN_DIR/config"
 
-  echo -e "${GREEN}[N-3/4] Creating start-neoforge.command...${NC}"
+  echo -e "${GREEN}[N-3/4] Choose NeoForge mods in a GUI dialog (Cancel = none)...${NC}"
+  choose_mods_gui "$NEO_RUN_DIR/mods"
+
+  echo -e "${GREEN}[N-4/4] Creating start-neoforge.command...${NC}"
   cat > start-neoforge.command <<EOF
 #!/usr/bin/env bash
 cd "\$(dirname "\$0")"
@@ -73,7 +103,7 @@ cd "\$(dirname "\$0")"
 EOF
   chmod +x start-neoforge.command
 
-  echo -e "${GREEN}[N-4/4] Creating uninstall-neoforge.command...${NC}"
+  echo -e "${GREEN}[N-5/5] Creating uninstall-neoforge.command...${NC}"
   cat > uninstall-neoforge.command <<EOF
 #!/usr/bin/env bash
 echo "This will delete the NeoForge project at:"
