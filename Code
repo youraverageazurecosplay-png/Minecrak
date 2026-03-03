@@ -8,7 +8,7 @@ FABRIC_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecr
 NEO_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/NeoForg"
 
 prompt_loader_choice() {
-  echo -e "${GREEN}=== Minecrak Master Setup ===${NC}"
+  echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
   echo
   echo "Which loader do you want to set up?"
   select opt in "Fabric" "NeoForge" "Quit"; do
@@ -33,9 +33,9 @@ run_remote() {
 main() {
   prompt_loader_choice
   case "$LOADER" in
-    "Fabric")  run_remote "$FABRIC_URL" ;;
+    "Fabric")   run_remote "$FABRIC_URL" ;;
     "NeoForge") run_remote "$NEO_URL" ;;
-    "Quit")   echo "Bye."; exit 0 ;;
+    "Quit")     echo "Bye."; exit 0 ;;
   esac
 }
 
