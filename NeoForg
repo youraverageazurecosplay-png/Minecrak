@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
 GREEN="\033[0;32m"
 NC="\033[0m"
 DEFAULT_CLONE_DIR="$HOME"
 
 move_mods_and_config() {
-  SOURCE="$1/mods"
-  TARGET_MODS="$1/runs/client/mods"
-  TARGET_CONFIG="$1/runs/client/config"
+  BASE_DIR="$1"
+
+  SOURCE="$BASE_DIR/mods"
+  TARGET_MODS="$BASE_DIR/runs/client/mods"
+  TARGET_CONFIG="$BASE_DIR/runs/client/config"
 
   mkdir -p "$TARGET_MODS"
   mkdir -p "$TARGET_CONFIG"
@@ -98,14 +100,16 @@ run_neoforge_setup() {
 
   cat > start-neoforge.command <<EOF
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
 NEO_PROJECT_DIR="$NEO_PROJECT_DIR"
 
 move_mods_and_config() {
-  SOURCE="\$NEO_PROJECT_DIR/mods"
-  TARGET_MODS="\$NEO_PROJECT_DIR/runs/client/mods"
-  TARGET_CONFIG="\$NEO_PROJECT_DIR/runs/client/config"
+  BASE_DIR="\$1"
+
+  SOURCE="\$BASE_DIR/mods"
+  TARGET_MODS="\$BASE_DIR/runs/client/mods"
+  TARGET_CONFIG="\$BASE_DIR/runs/client/config"
 
   mkdir -p "\$TARGET_MODS"
   mkdir -p "\$TARGET_CONFIG"
@@ -130,7 +134,7 @@ if [[ "\$CLEAN" =~ ^[Yy]$ ]]; then
   rm -f "\$NEO_PROJECT_DIR/runs/client/mods"/*.jar 2>/dev/null || true
 fi
 
-move_mods_and_config
+move_mods_and_config "\$NEO_PROJECT_DIR"
 
 ./gradlew runClient -DgameDir=runs/client
 EOF
