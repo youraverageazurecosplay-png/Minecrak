@@ -45,17 +45,10 @@ run_neoforge_setup() {
   git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR" || return
   cd "$NEO_PROJECT_DIR" || return
 
-  echo -e "${GREEN}[2/6] Forcing runs/client...${NC}"
-
-  sed -i '' '/gameDirectory *=/d' build.gradle
-  sed -i '' '/client {/a\
-        gameDirectory = project.file("runs/client")
-' build.gradle
-
   mkdir -p runs/client/mods
   mkdir -p runs/client/config
 
-  echo -e "${GREEN}[3/6] Add mods now? (y/N)${NC}"
+  echo -e "${GREEN}[2/6] Add mods now? (y/N)${NC}"
   read -r SELECT_MODS || true
 
   if [[ "$SELECT_MODS" =~ ^[Yy]$ ]]; then
@@ -64,7 +57,6 @@ run_neoforge_setup() {
 
     read -r -p "Press ENTER when done adding mods..." _
 
-    # Close Finder window for that folder
     osascript <<EOF
 tell application "Finder"
   close (every window whose target as alias is POSIX file "$NEO_PROJECT_DIR/mods")
@@ -74,7 +66,7 @@ EOF
     move_mods "$NEO_PROJECT_DIR"
   fi
 
-  echo -e "${GREEN}[4/6] Creating launcher...${NC}"
+  echo -e "${GREEN}[3/6] Creating launcher...${NC}"
 
   cat > start-neoforge.command <<EOF
 #!/usr/bin/env bash
@@ -101,12 +93,13 @@ if [[ "\$CLEAN" =~ ^[Yy]$ ]]; then
 fi
 
 move_mods
-./gradlew runClient
+
+./gradlew runClient -DgameDir=runs/client
 EOF
 
   chmod +x start-neoforge.command
 
-  echo -e "${GREEN}[5/6] Creating uninstall...${NC}"
+  echo -e "${GREEN}[4/6] Creating uninstall...${NC}"
 
   cat > uninstall-neoforge.command <<EOF
 #!/usr/bin/env bash
@@ -122,12 +115,12 @@ EOF
 
   chmod +x uninstall-neoforge.command
 
-  echo -e "${GREEN}[6/6] Run client now? (y/N)${NC}"
+  echo -e "${GREEN}[5/6] Run client now? (y/N)${NC}"
   read -r RUN_NOW || true
 
   if [[ "$RUN_NOW" =~ ^[Yy]$ ]]; then
     move_mods "$NEO_PROJECT_DIR"
-    ./gradlew runClient
+    ./gradlew runClient -DgameDir=runs/client
   fi
 
   echo
