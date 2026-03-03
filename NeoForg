@@ -17,11 +17,40 @@ run_neoforge_setup() {
   read -r -p "NeoForge project name [$DEFAULT_NEO_PROJECT_NAME]: " NEO_PROJECT_NAME
   NEO_PROJECT_NAME="${NEO_PROJECT_NAME:-$DEFAULT_NEO_PROJECT_NAME}"
   echo
+
   echo "NeoForge project base directory (default: $DEFAULT_CLONE_DIR)"
   read -r -p "Path (ENTER for default): " NEO_CLONE_DIR
   NEO_CLONE_DIR="${NEO_CLONE_DIR:-$DEFAULT_CLONE_DIR}"
   NEO_CLONE_DIR="${NEO_CLONE_DIR%/}"
   NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEO_PROJECT_NAME"
+
+  while [ -d "$NEO_PROJECT_DIR" ] && [ "$(ls -A "$NEO_PROJECT_DIR" 2>/dev/null | wc -l)" -gt 0 ]; do
+    echo
+    echo "Directory '$NEO_PROJECT_DIR' already exists and is not empty."
+    echo "What do you want to do?"
+    echo "  1) Delete it and recreate"
+    echo "  2) Enter a different project name"
+    echo "  3) Abort"
+    read -r -p "Choice [1/2/3]: " EXIST_CHOICE
+    case "$EXIST_CHOICE" in
+      1)
+        rm -rf "$NEO_PROJECT_DIR"
+        echo "Deleted '$NEO_PROJECT_DIR'."
+        ;;
+      2)
+        read -r -p "New NeoForge project name: " NEO_PROJECT_NAME
+        NEO_PROJECT_NAME="${NEO_PROJECT_NAME:-$DEFAULT_NEO_PROJECT_NAME}"
+        NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEO_PROJECT_NAME"
+        ;;
+      3)
+        echo "Aborting NeoForge setup."
+        return 1
+        ;;
+      *)
+        echo "Invalid choice."
+        ;;
+    esac
+  done
 
   echo
   echo -e "${GREEN}[N-1/4] Cloning NeoForge MDK to '$NEO_PROJECT_DIR'...${NC}"
