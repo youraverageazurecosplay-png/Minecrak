@@ -4,8 +4,8 @@ set -euo pipefail
 GREEN="\033[0;32m"
 NC="\033[0m"
 
-FABRIC_URL="https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/fabric_setup.sh"
-NEO_URL="https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/neoforge_setup.sh"
+FABRIC_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/Fabrik"
+NEO_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/NeoForg"
 
 prompt_loader_choice() {
   echo -e "${GREEN}=== Minecrak Master Setup ===${NC}"
