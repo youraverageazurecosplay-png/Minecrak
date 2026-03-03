@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-GREEN="\033[0;32m"
-NC="\033[0m"
-
 FABRIC_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/Fabrik"
 NEO_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/NeoForg"
 
-prompt_loader_choice() {
-  echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
-  echo
-  echo "Which loader do you want to set up?"
-  select opt in "Fabric" "NeoForge" "Quit"; do
-    case "$opt" in
-      "Fabric") LOADER="Fabric"; break ;;
-      "NeoForge") LOADER="NeoForge"; break ;;
-      "Quit") LOADER="Quit"; break ;;
-      *) echo "Invalid choice."; ;;
-    esac
-  done
+choose_loader_gui() {
+  local choice
+  choice="$(osascript <<'EOF'
+set options to {"Fabric", "NeoForge", "Quit"}
+tell application "System Events"
+  activate
+  set theChoice to choose from list options with title "Minecrak Setup" with prompt "Choose loader:" default items {"Fabric"}
+end tell
+if theChoice is false then
+  return "Quit"
+else
+  return item 1 of theChoice
+end if
+EOF
+)"
+  echo "$choice"
 }
 
 run_remote() {
@@ -31,11 +32,11 @@ run_remote() {
 }
 
 main() {
-  prompt_loader_choice
-  case "$LOADER" in
+  loader="$(choose_loader_gui)"
+  case "$loader" in
     "Fabric")   run_remote "$FABRIC_URL" ;;
     "NeoForge") run_remote "$NEO_URL" ;;
-    "Quit")     echo "Bye."; exit 0 ;;
+    *)          exit 0 ;;
   esac
 }
 
