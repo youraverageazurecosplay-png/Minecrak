@@ -5,17 +5,28 @@ GREEN="\033[0;32m"
 NC="\033[0m"
 DEFAULT_CLONE_DIR="$HOME"
 
+move_mods() {
+  SOURCE="$1/mods"
+  TARGET="$1/runs/client/mods"
+
+  mkdir -p "$TARGET"
+
+  if [ -d "$SOURCE" ]; then
+    find "$SOURCE" -maxdepth 1 -type f -name '*.jar' -exec mv {} "$TARGET"/ \;
+  fi
+}
+
 run_neoforge_setup() {
 
-  local DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
-  local DEFAULT_NEO_VERSION="1.21.1"
+  DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
+  DEFAULT_NEO_VERSION="1.21.1"
 
   echo -e "${GREEN}=== NeoForge Dev Setup ===${NC}"
 
   read -r -p "NeoForge Minecraft version [$DEFAULT_NEO_VERSION]: " NEO_VERSION_CHOICE
   NEO_VERSION_CHOICE="${NEO_VERSION_CHOICE:-$DEFAULT_NEO_VERSION}"
 
-  local NEO_MDK_REPO="https://github.com/NeoForgeMDKs/MDK-${NEO_VERSION_CHOICE}-NeoGradle.git"
+  NEO_MDK_REPO="https://github.com/NeoForgeMDKs/MDK-${NEO_VERSION_CHOICE}-NeoGradle.git"
 
   echo
   read -r -p "NeoForge project name [$DEFAULT_NEO_PROJECT_NAME]: " NEO_PROJECT_NAME
@@ -30,23 +41,13 @@ run_neoforge_setup() {
   NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEO_PROJECT_NAME"
 
   echo
-  echo -e "${GREEN}[N-1/6] Cloning NeoForge MDK to '$NEO_PROJECT_DIR'...${NC}"
-  git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR" || {
-    echo "Clone failed."
-    return
-  }
+  echo -e "${GREEN}[1/6] Cloning NeoForge MDK...${NC}"
+  git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR" || return
+  cd "$NEO_PROJECT_DIR" || return
 
-  cd "$NEO_PROJECT_DIR" || {
-    echo "Failed to enter project directory."
-    return
-  }
+  echo -e "${GREEN}[2/6] Forcing runs/client...${NC}"
 
-  echo -e "${GREEN}[N-2/6] Forcing gameDirectory to 'runs/client'...${NC}"
-
-  # Remove existing gameDirectory lines
   sed -i '' '/gameDirectory *=/d' build.gradle
-
-  # Insert gameDirectory inside client block
   sed -i '' '/client {/a\
         gameDirectory = project.file("runs/client")
 ' build.gradle
@@ -54,53 +55,63 @@ run_neoforge_setup() {
   mkdir -p runs/client/mods
   mkdir -p runs/client/config
 
-  echo -e "${GREEN}[N-3/6] Select NeoForge mods now? (y/N)${NC}"
+  echo -e "${GREEN}[3/6] Add mods now? (y/N)${NC}"
   read -r SELECT_MODS || true
 
-  if [[ "$SELECT_MODS" == "y" || "$SELECT_MODS" == "Y" ]]; then
+  if [[ "$SELECT_MODS" =~ ^[Yy]$ ]]; then
     mkdir -p "$NEO_PROJECT_DIR/mods"
-    echo "Opening $NEO_PROJECT_DIR/mods"
     open "$NEO_PROJECT_DIR/mods"
+
     read -r -p "Press ENTER when done adding mods..." _
+
+    # Close Finder window for that folder
+    osascript <<EOF
+tell application "Finder"
+  close (every window whose target as alias is POSIX file "$NEO_PROJECT_DIR/mods")
+end tell
+EOF
+
+    move_mods "$NEO_PROJECT_DIR"
   fi
 
-  echo -e "${GREEN}[N-4/6] Creating start-neoforge.command...${NC}"
+  echo -e "${GREEN}[4/6] Creating launcher...${NC}"
 
   cat > start-neoforge.command <<EOF
 #!/usr/bin/env bash
 set -uo pipefail
 
 NEO_PROJECT_DIR="$NEO_PROJECT_DIR"
-SOURCE_MODS_DIR="\$NEO_PROJECT_DIR/mods"
-TARGET_MODS_DIR="\$NEO_PROJECT_DIR/runs/client/mods"
+
+move_mods() {
+  SOURCE="\$NEO_PROJECT_DIR/mods"
+  TARGET="\$NEO_PROJECT_DIR/runs/client/mods"
+  mkdir -p "\$TARGET"
+  if [ -d "\$SOURCE" ]; then
+    find "\$SOURCE" -maxdepth 1 -type f -name '*.jar' -exec mv {} "\$TARGET"/ \;
+  fi
+}
 
 cd "\$NEO_PROJECT_DIR"
 
-mkdir -p "\$TARGET_MODS_DIR"
-
 echo "Clean runs/client/mods before moving mods? (y/N)"
-read -r CLEAN_CHOICE
+read -r CLEAN
 
-if [[ "\$CLEAN_CHOICE" == "y" || "\$CLEAN_CHOICE" == "Y" ]]; then
-  rm -f "\$TARGET_MODS_DIR"/*.jar 2>/dev/null || true
+if [[ "\$CLEAN" =~ ^[Yy]$ ]]; then
+  rm -f "\$NEO_PROJECT_DIR/runs/client/mods"/*.jar 2>/dev/null || true
 fi
 
-if [ -d "\$SOURCE_MODS_DIR" ]; then
-  find "\$SOURCE_MODS_DIR" -maxdepth 1 -type f -name '*.jar' -exec mv {} "\$TARGET_MODS_DIR"/ \;
-fi
-
+move_mods
 ./gradlew runClient
 EOF
 
   chmod +x start-neoforge.command
 
-  echo -e "${GREEN}[N-5/6] Creating uninstall-neoforge.command...${NC}"
+  echo -e "${GREEN}[5/6] Creating uninstall...${NC}"
 
   cat > uninstall-neoforge.command <<EOF
 #!/usr/bin/env bash
-echo "This will delete the NeoForge project at:"
-echo "  $NEO_PROJECT_DIR"
-read -r -p "Type 'DELETE' to confirm: " ans
+echo "Delete $NEO_PROJECT_DIR ?"
+read -r -p "Type DELETE to confirm: " ans
 if [ "\$ans" = "DELETE" ]; then
   rm -rf "$NEO_PROJECT_DIR"
   echo "Deleted."
@@ -111,19 +122,19 @@ EOF
 
   chmod +x uninstall-neoforge.command
 
-  echo -e "${GREEN}[N-6/6] Run client now? (y/N)${NC}"
+  echo -e "${GREEN}[6/6] Run client now? (y/N)${NC}"
   read -r RUN_NOW || true
 
-  if [[ "$RUN_NOW" == "y" || "$RUN_NOW" == "Y" ]]; then
+  if [[ "$RUN_NOW" =~ ^[Yy]$ ]]; then
+    move_mods "$NEO_PROJECT_DIR"
     ./gradlew runClient
   fi
 
   echo
-  echo -e "${GREEN}=== NeoForge setup complete ===${NC}"
+  echo -e "${GREEN}=== Setup Complete ===${NC}"
   echo "Project: $NEO_PROJECT_DIR"
   echo "Mods:    $NEO_PROJECT_DIR/runs/client/mods"
-  echo "Config:  $NEO_PROJECT_DIR/runs/client/config"
-  echo "Run later: double-click start-neoforge.command"
+  echo "Launcher: start-neoforge.command"
 }
 
 run_neoforge_setup
