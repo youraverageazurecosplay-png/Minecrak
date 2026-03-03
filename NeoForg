@@ -1,9 +1,30 @@
-#!/usr/bin/env bash
-set -euo pipefail
+choose_mods_gui() {
+  local dest="$1"
+  mkdir -p "$dest"
 
-GREEN="\033[0;32m"
-NC="\033[0m"
-DEFAULT_CLONE_DIR="$HOME"
+  echo "Pick one or more mod files in the dialog (Cancel = none)."
+  local applescript='
+    set theFiles to choose file with prompt "Choose mod files (you can Shift-click or Command-click multiple):" of type {"jar"} with multiple selections allowed
+    set thePOSIX to {}
+    repeat with f in theFiles
+      copy POSIX path of f to the end of thePOSIX
+    end repeat
+    return thePOSIX as string
+  '
+  local selected
+  if ! selected="$(osascript -e "$applescript" 2>/dev/null)"; then
+    echo "No mods selected."
+    return
+  fi
+
+  IFS=", " read -r -a files <<< "$selected"
+  for f in "${files[@]}"; do
+    if [ -f "$f" ]; then
+      cp "$f" "$dest/"
+      echo "Copied: $f"
+    fi
+  done
+}
 
 run_neoforge_setup() {
   DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
@@ -31,24 +52,13 @@ run_neoforge_setup() {
   NEO_RUN_DIR="runs/client"
   mkdir -p "$NEO_RUN_DIR/mods" "$NEO_RUN_DIR/config"
 
+  echo -e "${GREEN}[N-2/4] Pick mods in a GUI dialog...${NC}"
+  choose_mods_gui "$NEO_RUN_DIR/mods"
+
   cat > start-neoforge.command <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-NEO_PROJECT_DIR="$NEO_PROJECT_DIR"
-SOURCE_MODS_DIR="\$NEO_PROJECT_DIR/mods"
-TARGET_MODS_DIR="\$NEO_PROJECT_DIR/runs/client/mods"
-cd "\$NEO_PROJECT_DIR"
-mkdir -p "\$TARGET_MODS_DIR"
-echo "Clean \$TARGET_MODS_DIR before moving mods? (y/N)"
-read -r CLEAN_CHOICE
-if [ "\$CLEAN_CHOICE" = "y" ] || [ "\$CLEAN_CHOICE" = "Y" ]; then
-  rm -f "\$TARGET_MODS_DIR"/*.jar
-fi
-if [ -d "\$SOURCE_MODS_DIR" ]; then
-  find "\$SOURCE_MODS_DIR" -maxdepth 1 -type f -name '*.jar' -print0 | while IFS= read -r -d '' f; do
-    mv "\$f" "\$TARGET_MODS_DIR/"
-  done
-fi
+cd "\$(dirname "\$0")"
 ./gradlew runClient
 EOF
   chmod +x start-neoforge.command
@@ -70,10 +80,9 @@ EOF
   echo
   echo -e "${GREEN}=== NeoForge setup complete ===${NC}"
   echo "Project: $NEO_PROJECT_DIR"
-  echo "Mods: $NEO_PROJECT_DIR/runs/client/mods"
+  echo "Mods:   $NEO_PROJECT_DIR/runs/client/mods"
   echo "Config: $NEO_PROJECT_DIR/runs/client/config"
   echo "Run client: double-click start-neoforge.command"
-  echo "Uninstall: double-click uninstall-neoforge.command"
 }
 
 run_neoforge_setup
