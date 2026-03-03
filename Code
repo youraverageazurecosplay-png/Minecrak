@@ -1,43 +1,197 @@
+cat > fabric_example_master.sh << 'EOF'
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 
-FABRIC_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/Fabrik"
-NEO_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/NeoForg"
-
-choose_loader_gui() {
-  local choice
-  choice="$(osascript <<'EOF'
-set options to {"Fabric", "NeoForge", "Quit"}
+MC_VERSION=$(osascript << 'EON'
 tell application "System Events"
-  activate
-  set theChoice to choose from list options with title "Minecrak Setup" with prompt "Choose loader:" default items {"Fabric"}
+    activate
+    set theDialog to display dialog "Enter Minecraft version (just for tagging this instance):" ¬
+        with title "Fabric Example Mod" ¬
+        default answer "1.21.11"
+    set theText to text returned of theDialog
 end tell
-if theChoice is false then
-  return "Quit"
+return theText
+EON
+)
+
+if [ -z "$MC_VERSION" ]; then
+  echo "No version entered, aborting."
+  exit 1
+fi
+
+PROJECT_NAME=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theDialog to display dialog "Enter project name:" ¬
+        with title "Fabric Example Mod" ¬
+        default answer "fabric-example-mod-" & (do shell script "echo " & quoted form of (do shell script "date +%Y%m%d-%H%M%S"))
+    set theText to text returned of theDialog
+end tell
+return theText
+EON
+)
+
+if [ -z "$PROJECT_NAME" ]; then
+  echo "No project name entered, aborting."
+  exit 1
+fi
+
+CLONE_DIR=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theFolder to choose folder with prompt "Choose the folder where the project should be created:"
+    set thePath to POSIX path of theFolder
+end tell
+return thePath
+EON
+)
+
+if [ -z "$CLONE_DIR" ]; then
+  echo "No folder selected, aborting."
+  exit 1
+fi
+
+MODS_CHOICE=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    display dialog "Do you want to add external mods (e.g. Mod Menu) to the dev run?" ¬
+        with title "Fabric Example Mod" buttons {"No", "Yes"} default button "No"
+    set theButton to button returned of the result
+end tell
+return theButton
+EON
+)
+
+EXTRA_MODS=""
+if [ "$MODS_CHOICE" = "Yes" ]; then
+  EXTRA_MODS=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theFiles to choose file with prompt "Choose one or more Fabric mod .jar files (Command-click to select multiple):" ¬
+        with multiple selections allowed
+    set outList to {}
+    repeat with f in theFiles
+        set end of outList to POSIX path of f
+    end repeat
+end tell
+return outList as string
+EON
+  )
+fi
+
+WORLD_CHOICE=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    display dialog "Do you want to pick an existing world folder to auto-load?" ¬
+        with title "Fabric Example Mod" buttons {"No", "Yes"} default button "No"
+    set theButton to button returned of the result
+end tell
+return theButton
+EON
+)
+
+WORLD_PATH=""
+if [ "$WORLD_CHOICE" = "Yes" ]; then
+  WORLD_PATH=$(osascript << 'EON'
+tell application "System Events"
+    activate
+    set theFolder to choose folder with prompt "Choose a world folder (e.g. from saves/):"
+    set thePath to POSIX path of theFolder
+end tell
+return thePath
+EON
+  )
+fi
+
+REPO_URL="https://github.com/FabricMC/fabric-example-mod.git"
+PROJECT_DIR="${CLONE_DIR%/}/$PROJECT_NAME"
+RUN_SCRIPT_NAME="run-fabric-client.command"
+
+echo "=== Fabric Example Mod master script (macOS)==="
+echo "Project name: $PROJECT_NAME"
+echo "Clone directory: $CLONE_DIR"
+echo "Full project path: $PROJECT_DIR"
+echo "Minecraft version tag: $MC_VERSION"
+echo "Extra mods: $EXTRA_MODS"
+echo "World folder: $WORLD_PATH"
+echo
+
+if [ -d "$PROJECT_DIR" ]; then
+  echo "[1/5] Directory '$PROJECT_DIR' already exists, skipping clone."
 else
-  return item 1 of theChoice
-end if
+  echo "[1/5] Cloning Fabric example mod into '$PROJECT_DIR'..."
+  git clone "$REPO_URL" "$PROJECT_DIR"
+fi
+
+cd "$PROJECT_DIR"
+
+if [ -f "gradlew" ]; then
+  chmod +x gradlew
+else
+  echo "ERROR: gradlew not found in $PROJECT_DIR. Check the repo contents."
+  exit 1
+fi
+
+mkdir -p dev-mods
+IFS=$'\n'
+for m in $EXTRA_MODS; do
+  if [ -n "$m" ]; then
+    cp "$m" dev-mods/
+  fi
+done
+unset IFS
+
+echo "MC_VERSION_TAG=$MC_VERSION" > .dev-env
+echo "WORLD_PATH=$WORLD_PATH" >> .dev-env
+
+echo "[2/5] Running ./gradlew build ..."
+./gradlew build
+
+echo "[3/5] Running ./gradlew runClient (sound will be muted at OS level, you can unmute manually)..."
+osascript << 'EON'
+tell application "System Events"
+  set volume output volume 0
+end tell
+EON
+
+./gradlew runClient
+
+echo "[4/5] Creating '$RUN_SCRIPT_NAME' to build and run client later..."
+
+cat > "$RUN_SCRIPT_NAME" << 'EON'
+#!/usr/bin/env bash
+cd "$(dirname "$0")"
+
+chmod +x ./gradlew
+
+if [ -f ".dev-env" ]; then
+  set -a
+  . ./.dev-env
+  set +a
+fi
+
+mkdir -p dev-mods
+
+echo "Building Fabric mod..."
+./gradlew build
+
+echo "Muting system volume to 0%..."
+osascript << 'EOS'
+tell application "System Events"
+  set volume output volume 0
+end tell
+EOS
+
+echo "Launching Minecraft dev client..."
+./gradlew runClient
+EON
+
+chmod +x "$RUN_SCRIPT_NAME"
+
+echo "[5/5] Done."
+echo "Project directory:  $(pwd)"
+echo "Double-click this file in Finder next time to build+run:"
+echo "  $(pwd)/$RUN_SCRIPT_NAME"
 EOF
-)"
-  echo "$choice"
-}
-
-run_remote() {
-  url="$1"
-  tmp="$(mktemp)"
-  curl -fsSL "$url" -o "$tmp"
-  chmod +x "$tmp"
-  "$tmp"
-  rm -f "$tmp"
-}
-
-main() {
-  loader="$(choose_loader_gui)"
-  case "$loader" in
-    "Fabric")   run_remote "$FABRIC_URL" ;;
-    "NeoForge") run_remote "$NEO_URL" ;;
-    *)          exit 0 ;;
-  esac
-}
-
-main
+chmod +x fabric_example_master.sh
+./fabric_example_master.sh
