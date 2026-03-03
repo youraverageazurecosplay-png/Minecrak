@@ -14,11 +14,12 @@ NEO_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/
 prompt_loader_choice() {
   echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
   echo
-  echo "Which loader do you want to set up?"
-  select opt in "Fabric" "NeoForge" "Quit"; do
+  echo "What do you want to do?"
+  select opt in "Fabric" "NeoForge" "Install tools (Java/Gradle)" "Quit"; do
     case "$opt" in
       "Fabric") LOADER="Fabric"; break ;;
       "NeoForge") LOADER="NeoForge"; break ;;
+      "Install tools (Java/Gradle)") LOADER="Tools"; break ;;
       "Quit") LOADER="Quit"; break ;;
       *) echo "Invalid choice."; ;;
     esac
@@ -32,6 +33,43 @@ ensure_local_copy() {
   chmod +x "$local_path"
 }
 
+install_tools() {
+  echo -e "${GREEN}=== Installing required tools ===${NC}"
+  echo
+
+  if ! command -v java >/dev/null 2>&1; then
+    echo "Java not found."
+    if command -v brew >/dev/null 2>&1; then
+      echo "Installing Temurin JDK via Homebrew..."
+      brew install --cask temurin
+    else
+      echo "Homebrew not found."
+      echo "Please install Java manually from: https://adoptium.net"
+    fi
+  else
+    echo "Java is already installed."
+  fi
+
+  if ! command -v gradle >/dev/null 2>&1; then
+    echo
+    echo "Gradle not found."
+    if command -v brew >/dev/null 2>&1; then
+      echo "Installing Gradle via Homebrew..."
+      brew install gradle
+    else
+      echo "Homebrew not found."
+      echo "Gradle wrapper (./gradlew) will still work in each project."
+      echo "If you want system Gradle, install manually from: https://gradle.org/install/"
+    fi
+  else
+    echo
+    echo "Gradle is already installed."
+  fi
+
+  echo
+  echo -e "${GREEN}Tool check complete.${NC}"
+}
+
 main() {
   prompt_loader_choice
   case "$LOADER" in
@@ -42,6 +80,9 @@ main() {
     "NeoForge")
       ensure_local_copy "$NEO_URL" "$NEO_LOCAL"
       "$NEO_LOCAL"
+      ;;
+    "Tools")
+      install_tools
       ;;
     "Quit")
       echo "Bye."
