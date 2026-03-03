@@ -5,15 +5,40 @@ GREEN="\033[0;32m"
 NC="\033[0m"
 DEFAULT_CLONE_DIR="$HOME"
 
-move_mods() {
+move_mods_and_config() {
   SOURCE="$1/mods"
-  TARGET="$1/runs/client/mods"
+  TARGET_MODS="$1/runs/client/mods"
+  TARGET_CONFIG="$1/runs/client/config"
 
-  mkdir -p "$TARGET"
+  mkdir -p "$TARGET_MODS"
+  mkdir -p "$TARGET_CONFIG"
 
+  # Move mod jars
   if [ -d "$SOURCE" ]; then
-    find "$SOURCE" -maxdepth 1 -type f -name '*.jar' -exec mv {} "$TARGET"/ \;
+    find "$SOURCE" -maxdepth 1 -type f -name '*.jar' -exec mv {} "$TARGET_MODS"/ \;
   fi
+
+  # Move config folder if present
+  if [ -d "$SOURCE/config" ]; then
+    echo "Importing config folder..."
+    rm -rf "$TARGET_CONFIG"
+    mv "$SOURCE/config" "$TARGET_CONFIG"
+  fi
+}
+
+close_finder_window() {
+  osascript <<EOF 2>/dev/null || true
+tell application "Finder"
+    try
+        set targetPath to POSIX file "$1" as alias
+        repeat with w in windows
+            if (target of w as alias) is targetPath then
+                close w
+            end if
+        end repeat
+    end try
+end tell
+EOF
 }
 
 run_neoforge_setup() {
@@ -48,22 +73,25 @@ run_neoforge_setup() {
   mkdir -p runs/client/mods
   mkdir -p runs/client/config
 
-  echo -e "${GREEN}[2/6] Add mods now? (y/N)${NC}"
+  echo -e "${GREEN}[2/6] Add mods + config now? (y/N)${NC}"
   read -r SELECT_MODS || true
 
   if [[ "$SELECT_MODS" =~ ^[Yy]$ ]]; then
     mkdir -p "$NEO_PROJECT_DIR/mods"
     open "$NEO_PROJECT_DIR/mods"
 
-    read -r -p "Press ENTER when done adding mods..." _
+    echo
+    echo "Place:"
+    echo "  - .jar files"
+    echo "  - optional config folder"
+    echo "Into:"
+    echo "  $NEO_PROJECT_DIR/mods"
+    echo
 
-    osascript <<EOF
-tell application "Finder"
-  close (every window whose target as alias is POSIX file "$NEO_PROJECT_DIR/mods")
-end tell
-EOF
+    read -r -p "Press ENTER when done..." _
 
-    move_mods "$NEO_PROJECT_DIR"
+    close_finder_window "$NEO_PROJECT_DIR/mods"
+    move_mods_and_config "$NEO_PROJECT_DIR"
   fi
 
   echo -e "${GREEN}[3/6] Creating launcher...${NC}"
@@ -74,25 +102,35 @@ set -uo pipefail
 
 NEO_PROJECT_DIR="$NEO_PROJECT_DIR"
 
-move_mods() {
+move_mods_and_config() {
   SOURCE="\$NEO_PROJECT_DIR/mods"
-  TARGET="\$NEO_PROJECT_DIR/runs/client/mods"
-  mkdir -p "\$TARGET"
+  TARGET_MODS="\$NEO_PROJECT_DIR/runs/client/mods"
+  TARGET_CONFIG="\$NEO_PROJECT_DIR/runs/client/config"
+
+  mkdir -p "\$TARGET_MODS"
+  mkdir -p "\$TARGET_CONFIG"
+
   if [ -d "\$SOURCE" ]; then
-    find "\$SOURCE" -maxdepth 1 -type f -name '*.jar' -exec mv {} "\$TARGET"/ \;
+    find "\$SOURCE" -maxdepth 1 -type f -name '*.jar' -exec mv {} "\$TARGET_MODS"/ \;
+  fi
+
+  if [ -d "\$SOURCE/config" ]; then
+    echo "Importing config folder..."
+    rm -rf "\$TARGET_CONFIG"
+    mv "\$SOURCE/config" "\$TARGET_CONFIG"
   fi
 }
 
 cd "\$NEO_PROJECT_DIR"
 
-echo "Clean runs/client/mods before moving mods? (y/N)"
+echo "Clean mods folder before moving? (y/N)"
 read -r CLEAN
 
 if [[ "\$CLEAN" =~ ^[Yy]$ ]]; then
   rm -f "\$NEO_PROJECT_DIR/runs/client/mods"/*.jar 2>/dev/null || true
 fi
 
-move_mods
+move_mods_and_config
 
 ./gradlew runClient -DgameDir=runs/client
 EOF
@@ -119,7 +157,7 @@ EOF
   read -r RUN_NOW || true
 
   if [[ "$RUN_NOW" =~ ^[Yy]$ ]]; then
-    move_mods "$NEO_PROJECT_DIR"
+    move_mods_and_config "$NEO_PROJECT_DIR"
     ./gradlew runClient -DgameDir=runs/client
   fi
 
@@ -127,6 +165,7 @@ EOF
   echo -e "${GREEN}=== Setup Complete ===${NC}"
   echo "Project: $NEO_PROJECT_DIR"
   echo "Mods:    $NEO_PROJECT_DIR/runs/client/mods"
+  echo "Config:  $NEO_PROJECT_DIR/runs/client/config"
   echo "Launcher: start-neoforge.command"
 }
 
