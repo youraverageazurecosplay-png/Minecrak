@@ -1,128 +1,179 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 GREEN="\033[0;32m"
 NC="\033[0m"
 DEFAULT_CLONE_DIR="$HOME"
 
-choose_mods_gui() {
-  dest="$1"
-  mkdir -p "$dest"
+move_mods_and_config() {
+  SOURCE="$1/mods"
+  TARGET_MODS="$1/run/mods"
+  TARGET_CONFIG="$1/run/config"
 
-  applescript='
-    tell application "System Events"
-      activate
-      try
-        set theFiles to choose file with prompt "Choose Fabric mod files (Command/Shift for multiple):" of type {"jar"} with multiple selections allowed
-      on error
-        return ""
-      end try
-      set thePOSIX to {}
-      repeat with f in theFiles
-        copy POSIX path of f to the end of thePOSIX
-      end repeat
-      return thePOSIX as string
-    end tell
-  '
-  selected="$(osascript -e "$applescript")"
-  [ -z "$selected" ] && return
+  mkdir -p "$TARGET_MODS"
+  mkdir -p "$TARGET_CONFIG"
 
-  IFS=", " read -r -a files <<< "$selected"
-  for f in "${files[@]}"; do
-    [ -f "$f" ] && cp "$f" "$dest/"
-  done
+  # Move mod jars
+  if [ -d "$SOURCE" ]; then
+    find "$SOURCE" -maxdepth 1 -type f -name '*.jar' -exec mv {} "$TARGET_MODS"/ \;
+  fi
+
+  # Move config folder
+  if [ -d "$SOURCE/config" ]; then
+    echo "Importing config folder..."
+    rm -rf "$TARGET_CONFIG"
+    mv "$SOURCE/config" "$TARGET_CONFIG"
+  fi
 }
 
-open_folder_in_finder() {
-  path="$1"
-  [ -d "$path" ] && open "$path"
+close_finder_window() {
+  osascript <<EOF 2>/dev/null || true
+tell application "Finder"
+    try
+        set targetPath to POSIX file "$1" as alias
+        repeat with w in windows
+            if (target of w as alias) is targetPath then
+                close w
+            end if
+        end repeat
+    end try
+end tell
+EOF
 }
 
 run_fabric_setup() {
-  local DEFAULT_FABRIC_PROJECT_NAME="Minecrak Fabric"
-  local DEFAULT_FABRIC_VERSION="1.21.11"
-  local FABRIC_EXAMPLE_REPO="https://github.com/FabricMC/fabric-example-mod"
+
+  DEFAULT_PROJECT_NAME="Minecrak Fabric"
+  DEFAULT_MC_VERSION="1.21.1"
 
   echo -e "${GREEN}=== Fabric Dev Setup ===${NC}"
-  read -r -p "Minecraft version for Fabric [$DEFAULT_FABRIC_VERSION]: " FABRIC_MC_VERSION
-  FABRIC_MC_VERSION="${FABRIC_MC_VERSION:-$DEFAULT_FABRIC_VERSION}"
-  echo
-  read -r -p "Fabric project name [$DEFAULT_FABRIC_PROJECT_NAME]: " FABRIC_PROJECT_NAME
-  FABRIC_PROJECT_NAME="${FABRIC_PROJECT_NAME:-$DEFAULT_FABRIC_PROJECT_NAME}"
-  echo
-  echo "Fabric project base directory (default: $DEFAULT_CLONE_DIR)"
-  read -r -p "Path (ENTER for default): " FABRIC_CLONE_DIR
-  FABRIC_CLONE_DIR="${FABRIC_CLONE_DIR:-$DEFAULT_CLONE_DIR}"
-  FABRIC_CLONE_DIR="${FABRIC_CLONE_DIR%/}"
-  FABRIC_PROJECT_DIR="$FABRIC_CLONE_DIR/$FABRIC_PROJECT_NAME"
 
-  while [ -d "$FABRIC_PROJECT_DIR" ] && [ "$(ls -A "$FABRIC_PROJECT_DIR" 2>/dev/null | wc -l)" -gt 0 ]; do
+  read -r -p "Minecraft version [$DEFAULT_MC_VERSION]: " MC_VERSION
+  MC_VERSION="${MC_VERSION:-$DEFAULT_MC_VERSION}"
+
+  FABRIC_REPO="https://github.com/FabricMC/fabric-example-mod.git"
+
+  echo
+  read -r -p "Fabric project name [$DEFAULT_PROJECT_NAME]: " PROJECT_NAME
+  PROJECT_NAME="${PROJECT_NAME:-$DEFAULT_PROJECT_NAME}"
+
+  echo
+  echo "Project base directory (default: $DEFAULT_CLONE_DIR)"
+  read -r -p "Path (ENTER for default): " CLONE_DIR
+  CLONE_DIR="${CLONE_DIR:-$DEFAULT_CLONE_DIR}"
+  CLONE_DIR="${CLONE_DIR%/}"
+
+  PROJECT_DIR="$CLONE_DIR/$PROJECT_NAME"
+
+  echo
+  echo -e "${GREEN}[1/6] Cloning Fabric example mod...${NC}"
+  git clone "$FABRIC_REPO" "$PROJECT_DIR" || return
+  cd "$PROJECT_DIR" || return
+
+  mkdir -p run/mods
+  mkdir -p run/config
+
+  echo -e "${GREEN}[2/6] Add mods + config now? (y/N)${NC}"
+  read -r SELECT_MODS || true
+
+  if [[ "$SELECT_MODS" =~ ^[Yy]$ ]]; then
+    mkdir -p "$PROJECT_DIR/mods"
+    open "$PROJECT_DIR/mods"
+
     echo
-    echo "Directory '$FABRIC_PROJECT_DIR' already exists and is not empty."
-    echo "What do you want to do?"
-    echo "  1) Delete it and recreate"
-    echo "  2) Enter a different project name"
-    echo "  3) Abort"
-    read -r -p "Choice [1/2/3]: " EXIST_CHOICE
-    case "$EXIST_CHOICE" in
-      1)
-        rm -rf "$FABRIC_PROJECT_DIR"
-        echo "Deleted '$FABRIC_PROJECT_DIR'."
-        ;;
-      2)
-        read -r -p "New Fabric project name: " FABRIC_PROJECT_NAME
-        FABRIC_PROJECT_NAME="${FABRIC_PROJECT_NAME:-$DEFAULT_FABRIC_PROJECT_NAME}"
-        FABRIC_PROJECT_DIR="$FABRIC_CLONE_DIR/$FABRIC_PROJECT_NAME"
-        ;;
-      3)
-        echo "Aborting Fabric setup."
-        return 1
-        ;;
-      *)
-        echo "Invalid choice."
-        ;;
-    esac
-  done
+    echo "Place:"
+    echo "  - .jar files"
+    echo "  - optional config folder"
+    echo "Into:"
+    echo "  $PROJECT_DIR/mods"
+    echo
 
-  echo
-  echo -e "${GREEN}[F-1/4] Cloning Fabric example mod to '$FABRIC_PROJECT_DIR'...${NC}"
-  git clone "$FABRIC_EXAMPLE_REPO" "$FABRIC_PROJECT_DIR"
-  cd "$FABRIC_PROJECT_DIR"
+    read -r -p "Press ENTER when done..." _
 
-  mkdir -p run/mods run/config
-
-  echo -e "${GREEN}[F-2/4] Select Fabric mods now? (y/N)${NC}"
-  read -r MODS_CHOICE
-  if [ "$MODS_CHOICE" = "y" ] || [ "$MODS_CHOICE" = "Y" ]; then
-    choose_mods_gui "run/mods"
+    close_finder_window "$PROJECT_DIR/mods"
+    move_mods_and_config "$PROJECT_DIR"
   fi
 
-  echo -e "${GREEN}[F-3/4] Running ./gradlew build (you can runClient later)...${NC}"
-  ./gradlew build || true
+  echo -e "${GREEN}[3/6] Updating Minecraft version...${NC}"
 
-  echo -e "${GREEN}[F-4/4] Creating uninstall-fabric.command...${NC}"
+  # Update gradle.properties safely
+  if [ -f gradle.properties ]; then
+    sed -i '' "s/^minecraft_version=.*/minecraft_version=$MC_VERSION/" gradle.properties 2>/dev/null || true
+  fi
+
+  echo -e "${GREEN}[4/6] Creating launcher...${NC}"
+
+  cat > start-fabric.command <<EOF
+#!/usr/bin/env bash
+set -uo pipefail
+
+PROJECT_DIR="$PROJECT_DIR"
+
+move_mods_and_config() {
+  SOURCE="\$PROJECT_DIR/mods"
+  TARGET_MODS="\$PROJECT_DIR/run/mods"
+  TARGET_CONFIG="\$PROJECT_DIR/run/config"
+
+  mkdir -p "\$TARGET_MODS"
+  mkdir -p "\$TARGET_CONFIG"
+
+  if [ -d "\$SOURCE" ]; then
+    find "\$SOURCE" -maxdepth 1 -type f -name '*.jar' -exec mv {} "\$TARGET_MODS"/ \;
+  fi
+
+  if [ -d "\$SOURCE/config" ]; then
+    echo "Importing config folder..."
+    rm -rf "\$TARGET_CONFIG"
+    mv "\$SOURCE/config" "\$TARGET_CONFIG"
+  fi
+}
+
+cd "\$PROJECT_DIR"
+
+echo "Clean mods folder before moving? (y/N)"
+read -r CLEAN
+
+if [[ "\$CLEAN" =~ ^[Yy]$ ]]; then
+  rm -f "\$PROJECT_DIR/run/mods"/*.jar 2>/dev/null || true
+fi
+
+move_mods_and_config
+
+./gradlew runClient
+EOF
+
+  chmod +x start-fabric.command
+
+  echo -e "${GREEN}[5/6] Creating uninstall...${NC}"
+
   cat > uninstall-fabric.command <<EOF
 #!/usr/bin/env bash
-echo "This will delete the Fabric project at:"
-echo " $FABRIC_PROJECT_DIR"
-read -r -p "Type 'DELETE' to confirm: " ans
+echo "Delete $PROJECT_DIR ?"
+read -r -p "Type DELETE to confirm: " ans
 if [ "\$ans" = "DELETE" ]; then
-  rm -rf "$FABRIC_PROJECT_DIR"
+  rm -rf "$PROJECT_DIR"
   echo "Deleted."
 else
   echo "Cancelled."
 fi
 EOF
+
   chmod +x uninstall-fabric.command
 
-  open_folder_in_finder "run/mods"
+  echo -e "${GREEN}[6/6] Run client now? (y/N)${NC}"
+  read -r RUN_NOW || true
+
+  if [[ "$RUN_NOW" =~ ^[Yy]$ ]]; then
+    move_mods_and_config "$PROJECT_DIR"
+    ./gradlew runClient
+  fi
 
   echo
-  echo -e "${GREEN}=== Fabric setup complete ===${NC}"
-  echo "Project: $FABRIC_PROJECT_DIR"
-  echo "Mods:    $FABRIC_PROJECT_DIR/run/mods"
-  echo "Config:  $FABRIC_PROJECT_DIR/run/config"
-  echo "Run client: cd \"$FABRIC_PROJECT_DIR\" && ./gradlew runClient"
+  echo -e "${GREEN}=== Fabric Setup Complete ===${NC}"
+  echo "Project: $PROJECT_DIR"
+  echo "Mods:    $PROJECT_DIR/run/mods"
+  echo "Config:  $PROJECT_DIR/run/config"
+  echo "Launcher: start-fabric.command"
 }
 
 run_fabric_setup
