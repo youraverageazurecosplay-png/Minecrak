@@ -1,0 +1,1 @@
+"""Minecrak launcher package."""
