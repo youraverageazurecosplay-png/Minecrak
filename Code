@@ -15,11 +15,11 @@ prompt_loader_choice() {
   echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
   echo
   echo "What do you want to do?"
-  select opt in "Fabric" "NeoForge" "Install tools (Java/Gradle)" "Quit"; do
+  select opt in "Fabric" "NeoForge" "Install tools (Homebrew/Java 21/Gradle)" "Quit"; do
     case "$opt" in
       "Fabric") LOADER="Fabric"; break ;;
       "NeoForge") LOADER="NeoForge"; break ;;
-      "Install tools (Java/Gradle)") LOADER="Tools"; break ;;
+      "Install tools (Homebrew/Java 21/Gradle)") LOADER="Tools"; break ;;
       "Quit") LOADER="Quit"; break ;;
       *) echo "Invalid choice."; ;;
     esac
@@ -37,32 +37,43 @@ install_tools() {
   echo -e "${GREEN}=== Installing required tools ===${NC}"
   echo
 
-  if ! command -v java >/dev/null 2>&1; then
-    echo "Java not found."
-    if command -v brew >/dev/null 2>&1; then
-      echo "Installing Temurin JDK via Homebrew..."
-      brew install --cask temurin
-    else
-      echo "Homebrew not found."
-      echo "Please install Java manually from: https://adoptium.net"
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "Homebrew not found. Installing Homebrew..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    if [ -d "/opt/homebrew/bin" ]; then
+      eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [ -d "/usr/local/bin" ]; then
+      export PATH="/usr/local/bin:$PATH"
     fi
   else
-    echo "Java is already installed."
+    echo "Homebrew is already installed."
   fi
 
-  if ! command -v gradle >/dev/null 2>&1; then
-    echo
-    echo "Gradle not found."
-    if command -v brew >/dev/null 2>&1; then
-      echo "Installing Gradle via Homebrew..."
-      brew install gradle
-    else
-      echo "Homebrew not found."
-      echo "Gradle wrapper (./gradlew) will still work in each project."
-      echo "If you want system Gradle, install manually from: https://gradle.org/install/"
-    fi
+  echo
+  echo "Checking Java (need Java 21 for 1.21.x)..."
+  if ! command -v java >/dev/null 2>&1; then
+    echo "Java not found. Installing Temurin JDK 21 via Homebrew..."
+    brew install --cask temurin@21 || brew install --cask temurin
   else
-    echo
+    echo "Java is installed:"
+    java -version
+  fi
+
+  echo
+  echo "Checking Java version (expect 21.x)..."
+  if command -v java >/dev/null 2>&1; then
+    java -version
+    echo "If this is lower than 21, update JAVA_HOME / PATH to point to Java 21."
+  else
+    echo "Java still not found. Install Java 21 manually from https://adoptium.net."
+  fi
+
+  echo
+  echo "Checking Gradle..."
+  if ! command -v gradle >/dev/null 2>&1; then
+    echo "Gradle not found. Installing Gradle via Homebrew..."
+    brew install gradle
+  else
     echo "Gradle is already installed."
   fi
 
