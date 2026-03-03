@@ -33,6 +33,11 @@ choose_mods_gui() {
   done
 }
 
+open_folder_in_finder() {
+  path="$1"
+  [ -d "$path" ] && open "$path"
+}
+
 run_neoforge_setup() {
   local DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
   local DEFAULT_NEO_VERSION="1.21.1"
@@ -80,11 +85,11 @@ run_neoforge_setup() {
   done
 
   echo
-  echo -e "${GREEN}[N-1/4] Cloning NeoForge MDK to '$NEO_PROJECT_DIR'...${NC}"
+  echo -e "${GREEN}[N-1/5] Cloning NeoForge MDK to '$NEO_PROJECT_DIR'...${NC}"
   git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR"
   cd "$NEO_PROJECT_DIR"
 
-  echo -e "${GREEN}[N-2/4] Forcing gameDirectory to 'runs/client'...${NC}"
+  echo -e "${GREEN}[N-2/5] Forcing gameDirectory to 'runs/client'...${NC}"
   if grep -q "neoForge {" build.gradle; then
     sed -i.bak ' /neoForge\s*{/,/}/ { /runs\s*{/,/}/ { /client\s*{/,/}/ { /gameDirectory/d /client\s*{/a\ \ \ \ \ \ \ \ \ gameDirectory = project.file("runs/client") } } } ' build.gradle
   fi
@@ -92,12 +97,16 @@ run_neoforge_setup() {
   local NEO_RUN_DIR="runs/client"
   mkdir -p "$NEO_RUN_DIR/mods" "$NEO_RUN_DIR/config"
 
-  echo -e "${GREEN}[N-3/4] Choose NeoForge mods in a GUI dialog (Cancel = none)...${NC}"
-  choose_mods_gui "$NEO_RUN_DIR/mods"
+  echo -e "${GREEN}[N-3/5] Select NeoForge mods now? (y/N)${NC}"
+  read -r MODS_CHOICE
+  if [ "$MODS_CHOICE" = "y" ] || [ "$MODS_CHOICE" = "Y" ]; then
+    choose_mods_gui "$NEO_RUN_DIR/mods"
+  fi
 
-  echo -e "${GREEN}[N-4/4] Creating start-neoforge.command...${NC}"
+  echo -e "${GREEN}[N-4/5] Creating start-neoforge.command...${NC}"
   cat > start-neoforge.command <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
 cd "\$(dirname "\$0")"
 ./gradlew runClient
 EOF
@@ -118,11 +127,13 @@ fi
 EOF
   chmod +x uninstall-neoforge.command
 
+  open_folder_in_finder "$NEO_RUN_DIR/mods"
+
   echo
   echo -e "${GREEN}=== NeoForge setup complete ===${NC}"
   echo "Project: $NEO_PROJECT_DIR"
-  echo "Mods: $NEO_PROJECT_DIR/runs/client/mods"
-  echo "Config: $NEO_PROJECT_DIR/runs/client/config"
+  echo "Mods:    $NEO_PROJECT_DIR/runs/client/mods"
+  echo "Config:  $NEO_PROJECT_DIR/runs/client/config"
   echo "Run client: double-click start-neoforge.command"
 }
 
