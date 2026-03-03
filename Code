@@ -1,24 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NEO_PROJECT_DIR="/Users/ps/TBS"
-SOURCE_MODS_DIR="$NEO_PROJECT_DIR/mods"
-TARGET_MODS_DIR="$NEO_PROJECT_DIR/runs/client/mods"
+GREEN="\033[0;32m"
+NC="\033[0m"
 
-cd "$NEO_PROJECT_DIR"
+FABRIC_URL="https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/fabric_setup.sh"
+NEO_URL="https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/neoforge_setup.sh"
 
-mkdir -p "$TARGET_MODS_DIR"
-
-echo "Clean $TARGET_MODS_DIR before moving mods? (y/N)"
-read -r CLEAN_CHOICE
-if [ "$CLEAN_CHOICE" = "y" ] || [ "$CLEAN_CHOICE" = "Y" ]; then
-  rm -f "$TARGET_MODS_DIR"/*.jar
-fi
-
-if [ -d "$SOURCE_MODS_DIR" ]; then
-  find "$SOURCE_MODS_DIR" -maxdepth 1 -type f -name '*.jar' -print0 | while IFS= read -r -d '' f; do
-    mv "$f" "$TARGET_MODS_DIR/"
+prompt_loader_choice() {
+  echo -e "${GREEN}=== Minecrak Master Setup ===${NC}"
+  echo
+  echo "Which loader do you want to set up?"
+  select opt in "Fabric" "NeoForge" "Quit"; do
+    case "$opt" in
+      "Fabric") LOADER="Fabric"; break ;;
+      "NeoForge") LOADER="NeoForge"; break ;;
+      "Quit") LOADER="Quit"; break ;;
+      *) echo "Invalid choice."; ;;
+    esac
   done
-fi
+}
 
-./gradlew runClient
+run_remote() {
+  url="$1"
+  tmp="$(mktemp)"
+  curl -fsSL "$url" -o "$tmp"
+  chmod +x "$tmp"
+  "$tmp"
+  rm -f "$tmp"
+}
+
+main() {
+  prompt_loader_choice
+  case "$LOADER" in
+    "Fabric")  run_remote "$FABRIC_URL" ;;
+    "NeoForge") run_remote "$NEO_URL" ;;
+    "Quit")   echo "Bye."; exit 0 ;;
+  esac
+}
+
+main
