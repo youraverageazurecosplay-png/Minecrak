@@ -12,11 +12,11 @@ LOADER_TEMPLATES = {
 ANSI = {
     "reset": "\033[0m",
     "bold": "\033[1m",
-    "cyan": "\033[92m",
+    "cyan": "\033[96m",
     "blue": "\033[97m",
     "green": "\033[92m",
     "yellow": "\033[93m",
     "red": "\033[91m",
-    "magenta": "\033[95m",
-    "dim": "\033[2m",
+    "magenta": "\033[94m",
+    "dim": "\033[97m",
 }
