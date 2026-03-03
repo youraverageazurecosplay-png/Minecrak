@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GREEN="\033[0;32m"
+NC="\033[0m"
+DEFAULT_CLONE_DIR="$HOME"
+
+run_neoforge_setup() {
+  DEFAULT_NEO_PROJECT_NAME="Minecrak Neo"
+  DEFAULT_NEO_VERSION="1.21.1"
+
+  echo -e "${GREEN}=== NeoForge Dev Setup ===${NC}"
+  read -r -p "NeoForge Minecraft version [$DEFAULT_NEO_VERSION]: " NEO_VERSION_CHOICE
+  NEO_VERSION_CHOICE="${NEO_VERSION_CHOICE:-$DEFAULT_NEO_VERSION}"
+  NEO_MDK_REPO="https://github.com/NeoForgeMDKs/MDK-${NEO_VERSION_CHOICE}-NeoGradle.git"
+  echo
+  read -r -p "NeoForge project name [$DEFAULT_NEO_PROJECT_NAME]: " NEO_PROJECT_NAME
+  NEO_PROJECT_NAME="${NEO_PROJECT_NAME:-$DEFAULT_NEO_PROJECT_NAME}"
+  echo
+  echo "NeoForge project base directory (default: $DEFAULT_CLONE_DIR)"
+  read -r -p "Path (ENTER for default): " NEO_CLONE_DIR
+  NEO_CLONE_DIR="${NEO_CLONE_DIR:-$DEFAULT_CLONE_DIR}"
+  NEO_CLONE_DIR="${NEO_CLONE_DIR%/}"
+  NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEO_PROJECT_NAME"
+
+  echo
+  echo -e "${GREEN}[N-1/4] Cloning NeoForge MDK to '$NEO_PROJECT_DIR'...${NC}"
+  git clone "$NEO_MDK_REPO" "$NEO_PROJECT_DIR"
+  cd "$NEO_PROJECT_DIR"
+
+  NEO_RUN_DIR="runs/client"
+  mkdir -p "$NEO_RUN_DIR/mods" "$NEO_RUN_DIR/config"
+
+  cat > start-neoforge.command <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+NEO_PROJECT_DIR="$NEO_PROJECT_DIR"
+SOURCE_MODS_DIR="\$NEO_PROJECT_DIR/mods"
+TARGET_MODS_DIR="\$NEO_PROJECT_DIR/runs/client/mods"
+cd "\$NEO_PROJECT_DIR"
+mkdir -p "\$TARGET_MODS_DIR"
+echo "Clean \$TARGET_MODS_DIR before moving mods? (y/N)"
+read -r CLEAN_CHOICE
+if [ "\$CLEAN_CHOICE" = "y" ] || [ "\$CLEAN_CHOICE" = "Y" ]; then
+  rm -f "\$TARGET_MODS_DIR"/*.jar
+fi
+if [ -d "\$SOURCE_MODS_DIR" ]; then
+  find "\$SOURCE_MODS_DIR" -maxdepth 1 -type f -name '*.jar' -print0 | while IFS= read -r -d '' f; do
+    mv "\$f" "\$TARGET_MODS_DIR/"
+  done
+fi
+./gradlew runClient
+EOF
+  chmod +x start-neoforge.command
+
+  cat > uninstall-neoforge.command <<EOF
+#!/usr/bin/env bash
+echo "This will delete the NeoForge project at:"
+echo " $NEO_PROJECT_DIR"
+read -r -p "Type 'DELETE' to confirm: " ans
+if [ "\$ans" = "DELETE" ]; then
+  rm -rf "$NEO_PROJECT_DIR"
+  echo "Deleted."
+else
+  echo "Cancelled."
+fi
+EOF
+  chmod +x uninstall-neoforge.command
+
+  echo
+  echo -e "${GREEN}=== NeoForge setup complete ===${NC}"
+  echo "Project: $NEO_PROJECT_DIR"
+  echo "Mods: $NEO_PROJECT_DIR/runs/client/mods"
+  echo "Config: $NEO_PROJECT_DIR/runs/client/config"
+  echo "Run client: double-click start-neoforge.command"
+  echo "Uninstall: double-click uninstall-neoforge.command"
+}
+
+run_neoforge_setup
