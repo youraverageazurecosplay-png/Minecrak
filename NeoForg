@@ -22,7 +22,11 @@ choose_mods_gui() {
   applescript='
     tell application "System Events"
       activate
-      set theFiles to choose file with prompt "Choose NeoForge mod files (Command/Shift for multiple):" of type {"jar"} with multiple selections allowed
+      try
+        set theFiles to choose file with prompt "Choose NeoForge mod files (Command/Shift for multiple):" of type {"jar"} with multiple selections allowed
+      on error
+        return ""
+      end try
       set thePOSIX to {}
       repeat with f in theFiles
         copy POSIX path of f to the end of thePOSIX
@@ -30,9 +34,8 @@ choose_mods_gui() {
       return thePOSIX as string
     end tell
   '
-  if ! selected="$(osascript -e "$applescript" 2>/dev/null)"; then
-    return
-  fi
+  selected="$(osascript -e "$applescript")"
+  [ -z "$selected" ] && return
 
   IFS=", " read -r -a files <<< "$selected"
   for f in "${files[@]}"; do
@@ -53,8 +56,15 @@ run_neoforge_setup() {
   NEO_PROJECT_NAME="${NEO_PROJECT_NAME:-$DEFAULT_NEO_PROJECT_NAME}"
   echo
 
-  echo "Choose NeoForge project base directory in a GUI dialog."
-  NEO_CLONE_DIR="$(choose_folder_gui)"
+  echo "NeoForge project base directory:"
+  echo "  Press Enter for default: $DEFAULT_CLONE_DIR"
+  echo "  Type anything then Enter to choose via GUI."
+  read -r choice
+  if [ -z "$choice" ]; then
+    NEO_CLONE_DIR="$DEFAULT_CLONE_DIR"
+  else
+    NEO_CLONE_DIR="$(choose_folder_gui)"
+  fi
   NEO_CLONE_DIR="${NEO_CLONE_DIR%/}"
   NEO_PROJECT_DIR="$NEO_CLONE_DIR/$NEO_PROJECT_NAME"
 
@@ -66,7 +76,7 @@ run_neoforge_setup() {
   local NEO_RUN_DIR="runs/client"
   mkdir -p "$NEO_RUN_DIR/mods" "$NEO_RUN_DIR/config"
 
-  echo -e "${GREEN}[N-2/4] Choose NeoForge mods in a GUI dialog...${NC}"
+  echo -e "${GREEN}[N-2/4] Choose NeoForge mods in a GUI dialog (Cancel = none)...${NC}"
   choose_mods_gui "$NEO_RUN_DIR/mods"
 
   echo -e "${GREEN}[N-3/4] Creating start-neoforge.command...${NC}"
