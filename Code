@@ -1,105 +1,208 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
+
+# =========================
+# CONFIG
+# =========================
+
+BASE_DIR="$HOME/Minecrak"
+CORE_DIR="$HOME/MinecrakCore"
+INSTANCES_DIR="$HOME/MinecrakInstances"
 
 GREEN="\033[0;32m"
 NC="\033[0m"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-FABRIC_LOCAL="$SCRIPT_DIR/Fabrik"
-NEO_LOCAL="$SCRIPT_DIR/NeoForg"
+mkdir -p "$BASE_DIR"
+mkdir -p "$CORE_DIR/worlds"
+mkdir -p "$CORE_DIR/config/fabric"
+mkdir -p "$CORE_DIR/config/quilt"
+mkdir -p "$CORE_DIR/config/forge"
+mkdir -p "$CORE_DIR/config/neoforge"
+mkdir -p "$INSTANCES_DIR"
 
-FABRIC_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/Fabrik"
-NEO_URL="https://raw.githubusercontent.com/youraverageazurecosplay-png/Minecrak/refs/heads/main/NeoForg"
+# =========================
+# UTILITIES
+# =========================
 
-prompt_loader_choice() {
-  echo -e "${GREEN}=== Minecrak Dev Setup ===${NC}"
-  echo
-  echo "What do you want to do?"
-  select opt in "Fabric" "NeoForge" "Install tools (Homebrew/Java 21/Gradle)" "Quit"; do
-    case "$opt" in
-      "Fabric") LOADER="Fabric"; break ;;
-      "NeoForge") LOADER="NeoForge"; break ;;
-      "Install tools (Homebrew/Java 21/Gradle)") LOADER="Tools"; break ;;
-      "Quit") LOADER="Quit"; break ;;
-      *) echo "Invalid choice."; ;;
-    esac
-  done
+pause() {
+  read -r -p "Press ENTER to continue..." _
 }
 
-ensure_local_copy() {
-  url="$1"
-  local_path="$2"
-  curl -fsSL "$url" -o "$local_path"
-  chmod +x "$local_path"
-}
-
-install_tools() {
-  echo -e "${GREEN}=== Installing required tools ===${NC}"
+select_loader() {
   echo
+  echo "Select loader:"
+  echo "1) Fabric"
+  echo "2) Quilt"
+  echo "3) Forge"
+  echo "4) NeoForge"
+  read -r -p "#? " choice
 
-  if ! command -v brew >/dev/null 2>&1; then
-    echo "Homebrew not found. Installing Homebrew..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    if [ -d "/opt/homebrew/bin" ]; then
-      eval "$(/opt/homebrew/bin/brew shellenv)"
-    elif [ -d "/usr/local/bin" ]; then
-      export PATH="/usr/local/bin:$PATH"
-    fi
-  else
-    echo "Homebrew is already installed."
-  fi
-
-  echo
-  echo "Checking Java (need Java 21 for 1.21.x)..."
-  if ! command -v java >/dev/null 2>&1; then
-    echo "Java not found. Installing Temurin JDK 21 via Homebrew..."
-    brew install --cask temurin@21 || brew install --cask temurin
-  else
-    echo "Java is installed:"
-    java -version
-  fi
-
-  echo
-  echo "Checking Java version (expect 21.x)..."
-  if command -v java >/dev/null 2>&1; then
-    java -version
-    echo "If this is lower than 21, update JAVA_HOME / PATH to point to Java 21."
-  else
-    echo "Java still not found. Install Java 21 manually from https://adoptium.net."
-  fi
-
-  echo
-  echo "Checking Gradle..."
-  if ! command -v gradle >/dev/null 2>&1; then
-    echo "Gradle not found. Installing Gradle via Homebrew..."
-    brew install gradle
-  else
-    echo "Gradle is already installed."
-  fi
-
-  echo
-  echo -e "${GREEN}Tool check complete.${NC}"
-}
-
-main() {
-  prompt_loader_choice
-  case "$LOADER" in
-    "Fabric")
-      ensure_local_copy "$FABRIC_URL" "$FABRIC_LOCAL"
-      "$FABRIC_LOCAL"
-      ;;
-    "NeoForge")
-      ensure_local_copy "$NEO_URL" "$NEO_LOCAL"
-      "$NEO_LOCAL"
-      ;;
-    "Tools")
-      install_tools
-      ;;
-    "Quit")
-      echo "Bye."
-      exit 0
-      ;;
+  case "$choice" in
+    1) LOADER="fabric" ;;
+    2) LOADER="quilt" ;;
+    3) LOADER="forge" ;;
+    4) LOADER="neoforge" ;;
+    *) echo "Invalid."; return 1 ;;
   esac
 }
 
-main
+loader_repo() {
+  case "$LOADER" in
+    fabric) REPO="https://github.com/FabricMC/fabric-example-mod.git" ;;
+    quilt) REPO="https://github.com/QuiltMC/quilt-template-mod.git" ;;
+    forge) REPO="https://github.com/MinecraftForge/MinecraftForge.git" ;;
+    neoforge) REPO="https://github.com/NeoForgeMDKs/MDK-1.21.1-NeoGradle.git" ;;
+  esac
+}
+
+instance_run_path() {
+  if [ "$LOADER" = "neoforge" ]; then
+    RUN_PATH="runs/client"
+  else
+    RUN_PATH="run"
+  fi
+}
+
+create_symlinks() {
+  mkdir -p "$INSTANCE_DIR/$RUN_PATH/mods"
+
+  rm -rf "$INSTANCE_DIR/$RUN_PATH/saves"
+  rm -rf "$INSTANCE_DIR/$RUN_PATH/config"
+
+  ln -s "$CORE_DIR/worlds" "$INSTANCE_DIR/$RUN_PATH/saves"
+  ln -s "$CORE_DIR/config/$LOADER" "$INSTANCE_DIR/$RUN_PATH/config"
+}
+
+create_launcher() {
+  cat > "$INSTANCE_DIR/start.command" <<EOF
+#!/usr/bin/env bash
+cd "$INSTANCE_DIR"
+USERNAME=\$(cat .username)
+./gradlew runClient --args="--username \$USERNAME"
+EOF
+
+  chmod +x "$INSTANCE_DIR/start.command"
+}
+
+# =========================
+# CREATE INSTANCE
+# =========================
+
+create_instance() {
+  select_loader || return
+  loader_repo
+  instance_run_path
+
+  echo
+  read -r -p "Instance name: " NAME
+  INSTANCE_DIR="$INSTANCES_DIR/$NAME"
+
+  if [ -d "$INSTANCE_DIR" ]; then
+    echo "Instance already exists."
+    return
+  fi
+
+  echo -e "${GREEN}Cloning loader template...${NC}"
+  git clone "$REPO" "$INSTANCE_DIR" || return
+
+  echo
+  read -r -p "Player username [Dev]: " USERNAME
+  USERNAME="${USERNAME:-Dev}"
+  echo "$USERNAME" > "$INSTANCE_DIR/.username"
+
+  create_symlinks
+  create_launcher
+
+  echo
+  echo -e "${GREEN}Instance created.${NC}"
+  echo "Location: $INSTANCE_DIR"
+  pause
+}
+
+# =========================
+# LIST INSTANCES
+# =========================
+
+list_instances() {
+  echo
+  echo "Instances:"
+  ls "$INSTANCES_DIR"
+  pause
+}
+
+# =========================
+# DELETE INSTANCE
+# =========================
+
+delete_instance() {
+  list_instances
+  echo
+  read -r -p "Enter instance name to delete: " NAME
+  TARGET="$INSTANCES_DIR/$NAME"
+
+  if [ ! -d "$TARGET" ]; then
+    echo "Not found."
+    return
+  fi
+
+  rm -rf "$TARGET"
+  echo "Deleted."
+  pause
+}
+
+delete_all_instances() {
+  echo "Type DELETE to confirm:"
+  read -r confirm
+  if [ "$confirm" = "DELETE" ]; then
+    rm -rf "$INSTANCES_DIR"
+    mkdir -p "$INSTANCES_DIR"
+    echo "All instances removed."
+  else
+    echo "Cancelled."
+  fi
+  pause
+}
+
+# =========================
+# IMPORT GLOBAL CONFIG
+# =========================
+
+import_config() {
+  select_loader || return
+
+  TARGET="$CORE_DIR/config/$LOADER"
+
+  echo
+  echo "Place config files into:"
+  echo "$TARGET"
+  open "$TARGET"
+  pause
+}
+
+# =========================
+# MAIN MENU
+# =========================
+
+while true; do
+  clear
+  echo -e "${GREEN}=== Minecrak Master ===${NC}"
+  echo
+  echo "1) Create new instance"
+  echo "2) List instances"
+  echo "3) Delete instance"
+  echo "4) Delete ALL instances"
+  echo "5) Import shared config"
+  echo "6) Quit"
+  echo
+  read -r -p "#? " main
+
+  case "$main" in
+    1) create_instance ;;
+    2) list_instances ;;
+    3) delete_instance ;;
+    4) delete_all_instances ;;
+    5) import_config ;;
+    6) exit 0 ;;
+    *) echo "Invalid."; pause ;;
+  esac
+done
